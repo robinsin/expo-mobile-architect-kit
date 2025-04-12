@@ -3,7 +3,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PaintBrush, Music, Upload as UploadIcon } from "lucide-react";
+import { Paintbrush, Music, Upload as UploadIcon } from "lucide-react";
 
 const Upload: React.FC = () => {
   return (
@@ -13,7 +13,7 @@ const Upload: React.FC = () => {
       <Tabs defaultValue="visual" className="w-full">
         <TabsList className="grid w-full grid-cols-2 mb-4">
           <TabsTrigger value="visual" className="flex items-center gap-2">
-            <PaintBrush className="h-4 w-4" />
+            <Paintbrush className="h-4 w-4" />
             Visual Art
           </TabsTrigger>
           <TabsTrigger value="music" className="flex items-center gap-2">
