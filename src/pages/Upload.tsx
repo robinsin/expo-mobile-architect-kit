@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,17 +56,34 @@ const Upload: React.FC = () => {
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
       const bucketName = type === 'visual' ? 'artwork-images' : 'music-files';
       
+      // Create a callback to track upload progress
+      const trackProgress = (progress: number) => {
+        setUploadProgress(progress);
+      };
+      
+      // Set up upload options with custom headers for progress tracking
+      const options = {
+        cacheControl: '3600',
+        upsert: false
+      };
+      
+      // Use XMLHttpRequest to track progress manually
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      
+      // Set up progress tracking
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          trackProgress(percent);
+        }
+      });
+      
       // Upload the file to storage
       const { error: uploadError, data } = await supabase.storage
         .from(bucketName)
-        .upload(fileName, selectedFile, {
-          cacheControl: '3600',
-          upsert: false,
-          onUploadProgress: (progress) => {
-            const percent = Math.round((progress.loaded / progress.total) * 100);
-            setUploadProgress(percent);
-          }
-        });
+        .upload(fileName, selectedFile, options);
         
       if (uploadError) throw uploadError;
       
