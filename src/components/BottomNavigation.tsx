@@ -1,7 +1,7 @@
 
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, Search, User, Settings } from "lucide-react";
+import { Home, Search, User, Heart, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const BottomNavigation: React.FC = () => {
@@ -10,9 +10,10 @@ const BottomNavigation: React.FC = () => {
   
   const navItems = [
     { icon: Home, label: "Home", path: "/" },
-    { icon: Search, label: "Search", path: "/search" },
+    { icon: Search, label: "Discover", path: "/search" },
+    { icon: Upload, label: "Upload", path: "/upload" },
+    { icon: Heart, label: "Inspired", path: "/inspired" },
     { icon: User, label: "Profile", path: "/profile" },
-    { icon: Settings, label: "Settings", path: "/settings" },
   ];
 
   return (
@@ -22,7 +23,7 @@ const BottomNavigation: React.FC = () => {
           key={item.path}
           className={cn(
             "flex flex-col items-center justify-center w-full h-full",
-            location.pathname === item.path ? "text-primary" : "text-muted-foreground"
+            location.pathname === item.path ? "text-purple-500" : "text-muted-foreground"
           )}
           onClick={() => navigate(item.path)}
         >
