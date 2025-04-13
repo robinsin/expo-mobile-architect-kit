@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,45 +15,17 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
-
-interface Artwork {
-  id: string;
-  title: string;
-  image_url: string;
-  created_at: string;
-  user_id: string;
-  genre?: string;
-  type: string; // Added type property
-}
-
-interface MusicTrack {
-  id: string;
-  title: string;
-  audio_url: string;
-  created_at: string;
-  user_id: string;
-  duration: number;
-  genre?: string;
-  type: string; // Already has type property
-}
-
-interface Profile {
-  id: string;
-  name: string;
-  avatar_url: string | null;
-}
-
-interface Comment {
-  id: string;
-  content: string;
-  created_at: string;
-  user_id: string;
-  content_id: string;
-  content_type: string;
-  user_profile?: Profile;
-}
-
-type Content = Artwork | MusicTrack;
+import { Artwork, MusicTrack, Content, Profile, Comment } from "@/types/social";
+import { 
+  fetchProfiles, 
+  fetchUserLikes, 
+  fetchUserFollows, 
+  fetchComments, 
+  likeContent, 
+  followUser, 
+  addComment, 
+  saveInspirationSource 
+} from "@/utils/databaseUtils";
 
 const Search: React.FC = () => {
   const { user } = useAuth();
@@ -65,13 +37,13 @@ const Search: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<Content | null>(null);
   const [isArtwork, setIsArtwork] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [profiles, setProfiles] = useState<{[key: string]: Profile}>({});
-  const [likedContent, setLikedContent] = useState<{[key: string]: boolean}>({});
-  const [followedUsers, setFollowedUsers] = useState<{[key: string]: boolean}>({});
+  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  const [likedContent, setLikedContent] = useState<Record<string, boolean>>({});
+  const [followedUsers, setFollowedUsers] = useState<Record<string, boolean>>({});
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [activeTab, setActiveTab] = useState<"view" | "comments">("view");
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   useEffect(() => {
     const fetchContent = async () => {
@@ -95,8 +67,8 @@ const Search: React.FC = () => {
         if (musicError) throw musicError;
         
         // Combine and add type property
-        const artworksWithType = artworks?.map(art => ({ ...art, type: 'artwork' })) || [];
-        const musicWithType = musicTracks?.map(track => ({ ...track, type: 'music' })) || [];
+        const artworksWithType = artworks?.map(art => ({ ...art, type: 'artwork' as const })) || [];
+        const musicWithType = musicTracks?.map(track => ({ ...track, type: 'music' as const })) || [];
         
         // Combine both types of content and sort by creation date
         const combined = [...artworksWithType, ...musicWithType].sort((a, b) => 
@@ -109,50 +81,18 @@ const Search: React.FC = () => {
         // Fetch all user profiles for the content
         const userIds = [...new Set(combined.map(item => item.user_id))];
         if (userIds.length > 0) {
-          const { data: profilesData, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, name, avatar_url')
-            .in('id', userIds);
-            
-          if (profilesError) throw profilesError;
-          
-          // Create a map of user_id to profile data
-          const profilesMap = (profilesData || []).reduce((acc, profile) => {
-            acc[profile.id] = profile;
-            return acc;
-          }, {} as {[key: string]: Profile});
-          
+          const profilesMap = await fetchProfiles(userIds);
           setProfiles(profilesMap);
         }
         
         // Fetch user likes if logged in
         if (user) {
-          const { data: likes, error: likesError } = await supabase
-            .from('likes')
-            .select('content_id')
-            .eq('user_id', user.id);
-            
-          if (!likesError && likes) {
-            const likedMap = likes.reduce((acc, like) => {
-              acc[like.content_id] = true;
-              return acc;
-            }, {} as {[key: string]: boolean});
-            setLikedContent(likedMap);
-          }
+          const likedMap = await fetchUserLikes(user.id);
+          setLikedContent(likedMap);
           
           // Fetch user follows
-          const { data: follows, error: followsError } = await supabase
-            .from('follows')
-            .select('followed_id')
-            .eq('follower_id', user.id);
-            
-          if (!followsError && follows) {
-            const followsMap = follows.reduce((acc, follow) => {
-              acc[follow.followed_id] = true;
-              return acc;
-            }, {} as {[key: string]: boolean});
-            setFollowedUsers(followsMap);
-          }
+          const followsMap = await fetchUserFollows(user.id);
+          setFollowedUsers(followsMap);
         }
       } catch (error: any) {
         toast({
@@ -196,57 +136,9 @@ const Search: React.FC = () => {
     }
     
     // Fetch comments for the selected item
-    fetchComments(item.id, item.type);
-  };
-  
-  const fetchComments = async (contentId: string, contentType: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('comments')
-        .select(`
-          id, 
-          content, 
-          created_at, 
-          user_id, 
-          content_id, 
-          content_type
-        `)
-        .eq('content_id', contentId)
-        .eq('content_type', contentType)
-        .order('created_at', { ascending: false });
-        
-      if (error) throw error;
-      
-      // Fetch user profiles for the comments
-      const userIds = [...new Set((data || []).map(comment => comment.user_id))];
-      if (userIds.length > 0) {
-        const { data: commentProfiles, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, name, avatar_url')
-          .in('id', userIds);
-          
-        if (profilesError) throw profilesError;
-        
-        // Add user profile to each comment
-        const commentsWithProfiles = (data || []).map(comment => {
-          const userProfile = commentProfiles?.find(profile => profile.id === comment.user_id);
-          return {
-            ...comment,
-            user_profile: userProfile || undefined
-          };
-        });
-        
-        setComments(commentsWithProfiles);
-      } else {
-        setComments(data || []);
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error fetching comments",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    fetchComments(item.id, item.type).then(commentsData => {
+      setComments(commentsData);
+    });
   };
   
   const handlePlayPause = () => {
@@ -286,61 +178,14 @@ const Search: React.FC = () => {
       return;
     }
     
-    try {
-      // Check if already liked
-      const isLiked = likedContent[item.id];
-      
-      if (isLiked) {
-        // Remove like
-        const { error } = await supabase
-          .from('likes')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('content_id', item.id);
-          
-        if (error) throw error;
-        
-        // Update local state
-        setLikedContent(prev => {
-          const updated = {...prev};
-          delete updated[item.id];
-          return updated;
-        });
-        
-        toast({
-          title: "Like removed",
-          variant: "default",
-        });
-      } else {
-        // Add like
-        const { error } = await supabase
-          .from('likes')
-          .insert({
-            user_id: user.id,
-            content_id: item.id,
-            content_type: item.type
-          });
-          
-        if (error) throw error;
-        
-        // Update local state
-        setLikedContent(prev => ({
-          ...prev,
-          [item.id]: true
-        }));
-        
-        toast({
-          title: "Content liked!",
-          variant: "default",
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    const isLiked = likedContent[item.id] || false;
+    const result = await likeContent(user.id, item, isLiked);
+    
+    // Update local state
+    setLikedContent(prev => ({
+      ...prev,
+      [item.id]: result
+    }));
   };
   
   const handleFollow = async (userId: string, event?: React.MouseEvent) => {
@@ -357,67 +202,14 @@ const Search: React.FC = () => {
       return;
     }
     
-    if (user.id === userId) {
-      toast({
-        title: "Cannot follow yourself",
-        variant: "default",
-      });
-      return;
-    }
+    const isFollowing = followedUsers[userId] || false;
+    const result = await followUser(user.id, userId, isFollowing);
     
-    try {
-      const isFollowing = followedUsers[userId];
-      
-      if (isFollowing) {
-        // Unfollow
-        const { error } = await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', user.id)
-          .eq('followed_id', userId);
-          
-        if (error) throw error;
-        
-        // Update local state
-        setFollowedUsers(prev => {
-          const updated = {...prev};
-          delete updated[userId];
-          return updated;
-        });
-        
-        toast({
-          title: "Unfollowed user",
-          variant: "default",
-        });
-      } else {
-        // Follow
-        const { error } = await supabase
-          .from('follows')
-          .insert({
-            follower_id: user.id,
-            followed_id: userId
-          });
-          
-        if (error) throw error;
-        
-        // Update local state
-        setFollowedUsers(prev => ({
-          ...prev,
-          [userId]: true
-        }));
-        
-        toast({
-          title: "Following user!",
-          variant: "default",
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
+    // Update local state
+    setFollowedUsers(prev => ({
+      ...prev,
+      [userId]: result
+    }));
   };
   
   const handleComment = async () => {
@@ -425,41 +217,20 @@ const Search: React.FC = () => {
       return;
     }
     
-    try {
-      const { data, error } = await supabase
-        .from('comments')
-        .insert({
-          user_id: user.id,
-          content_id: selectedItem.id,
-          content_type: selectedItem.type,
-          content: newComment.trim()
-        })
-        .select();
-        
-      if (error) throw error;
-      
-      // Add user profile to the new comment
-      const newCommentWithProfile = {
-        ...data![0],
-        user_profile: profiles[user.id]
-      };
-      
+    const newCommentObj = await addComment(
+      user.id,
+      selectedItem.id,
+      selectedItem.type,
+      newComment,
+      profiles[user.id]
+    );
+    
+    if (newCommentObj) {
       // Update comments list
-      setComments(prev => [newCommentWithProfile, ...prev]);
+      setComments(prev => [newCommentObj, ...prev]);
       
       // Clear input
       setNewComment("");
-      
-      toast({
-        title: "Comment added",
-        variant: "default",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error adding comment",
-        description: error.message,
-        variant: "destructive",
-      });
     }
   };
   
@@ -478,11 +249,7 @@ const Search: React.FC = () => {
     }
     
     // Store inspiration in local storage before redirecting
-    localStorage.setItem('inspired_by', JSON.stringify({
-      id: item.id,
-      title: item.title,
-      type: item.type
-    }));
+    saveInspirationSource(item.id, item.title, item.type);
     
     // Redirect to upload page
     navigate('/upload');

@@ -19,15 +19,20 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface UserSettings {
+  id?: string;
+  user_id: string;
   dark_mode: boolean;
   push_notifications: boolean;
   email_notifications: boolean;
   privacy_mode: "public" | "followers" | "private";
+  created_at?: string;
+  updated_at?: string;
 }
 
 const Settings: React.FC = () => {
   const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettings>({
+    user_id: "",
     dark_mode: false,
     push_notifications: false,
     email_notifications: false,
@@ -67,6 +72,8 @@ const Settings: React.FC = () => {
         // If settings exist, use them
         if (data) {
           setSettings({
+            id: data.id,
+            user_id: data.user_id,
             dark_mode: data.dark_mode || getInitialTheme(),
             push_notifications: data.push_notifications || false,
             email_notifications: data.email_notifications || false,
@@ -76,21 +83,32 @@ const Settings: React.FC = () => {
           privacyForm.setValue('privacy_mode', data.privacy_mode || "public");
         } else {
           // Create default settings
-          const defaultSettings = {
+          const defaultSettings: UserSettings = {
             user_id: user.id,
             dark_mode: getInitialTheme(),
             push_notifications: false,
             email_notifications: false,
-            privacy_mode: "public" as "public" | "followers" | "private"
+            privacy_mode: "public"
           };
           
-          const { error: insertError } = await supabase
+          const { data: newSettings, error: insertError } = await supabase
             .from('user_settings')
-            .insert(defaultSettings);
+            .insert(defaultSettings)
+            .select()
+            .single();
             
           if (insertError) throw insertError;
           
-          setSettings(defaultSettings);
+          if (newSettings) {
+            setSettings({
+              id: newSettings.id,
+              user_id: newSettings.user_id,
+              dark_mode: newSettings.dark_mode,
+              push_notifications: newSettings.push_notifications,
+              email_notifications: newSettings.email_notifications,
+              privacy_mode: newSettings.privacy_mode
+            });
+          }
         }
       } catch (error: any) {
         toast({

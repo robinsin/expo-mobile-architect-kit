@@ -13,9 +13,15 @@ interface GenreSelectProps {
   type: 'visual' | 'music';
   value: string;
   onChange: (value: string) => void;
+  label?: string;
 }
 
-const GenreSelect: React.FC<GenreSelectProps> = ({ type, value, onChange }) => {
+const GenreSelect: React.FC<GenreSelectProps> = ({ 
+  type, 
+  value, 
+  onChange, 
+  label = "Genre" 
+}) => {
   const visualGenres = [
     "Abstract", 
     "Portrait", 
@@ -57,7 +63,7 @@ const GenreSelect: React.FC<GenreSelectProps> = ({ type, value, onChange }) => {
   
   return (
     <div className="space-y-2">
-      <Label htmlFor="genre">Genre</Label>
+      <Label htmlFor="genre">{label}</Label>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger id="genre">
           <SelectValue placeholder="Select a genre" />

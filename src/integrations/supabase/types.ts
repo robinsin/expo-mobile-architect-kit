@@ -13,6 +13,7 @@ export type Database = {
         Row: {
           created_at: string | null
           description: string | null
+          genre: string | null
           id: string
           image_url: string
           tags: string[] | null
@@ -23,6 +24,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           description?: string | null
+          genre?: string | null
           id?: string
           image_url: string
           tags?: string[] | null
@@ -33,6 +35,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           description?: string | null
+          genre?: string | null
           id?: string
           image_url?: string
           tags?: string[] | null
@@ -49,6 +52,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      comments: {
+        Row: {
+          content: string
+          content_id: string
+          content_type: string
+          created_at: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          content_id: string
+          content_type: string
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          content_id?: string
+          content_type?: string
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      follows: {
+        Row: {
+          created_at: string | null
+          followed_id: string
+          follower_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string | null
+          followed_id: string
+          follower_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string | null
+          followed_id?: string
+          follower_id?: string
+          id?: string
+        }
+        Relationships: []
       }
       inspirations: {
         Row: {
@@ -77,12 +131,37 @@ export type Database = {
         }
         Relationships: []
       }
+      likes: {
+        Row: {
+          content_id: string
+          content_type: string
+          created_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          content_type: string
+          created_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          content_type?: string
+          created_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       music_tracks: {
         Row: {
           audio_url: string
           created_at: string | null
           description: string | null
           duration: number
+          genre: string | null
           id: string
           tags: string[] | null
           title: string
@@ -94,6 +173,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           duration: number
+          genre?: string | null
           id?: string
           tags?: string[] | null
           title: string
@@ -105,6 +185,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           duration?: number
+          genre?: string | null
           id?: string
           tags?: string[] | null
           title?: string
@@ -151,6 +232,39 @@ export type Database = {
           name?: string
           updated_at?: string | null
           website?: string | null
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          created_at: string | null
+          dark_mode: boolean | null
+          email_notifications: boolean | null
+          id: string
+          privacy_mode: string | null
+          push_notifications: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          dark_mode?: boolean | null
+          email_notifications?: boolean | null
+          id?: string
+          privacy_mode?: string | null
+          push_notifications?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          dark_mode?: boolean | null
+          email_notifications?: boolean | null
+          id?: string
+          privacy_mode?: string | null
+          push_notifications?: boolean | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
