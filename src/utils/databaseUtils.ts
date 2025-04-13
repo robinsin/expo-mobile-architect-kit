@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy, Notification, NotificationType, UserStats, FollowConnection } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
@@ -445,8 +444,9 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
     // Get most liked content IDs
     const { data: likesData } = await supabase
       .from('likes')
-      .select('content_id, content_type, count(*)')
-      .group('content_id, content_type')
+      .select('content_id, content_type')
+      .select('content_id, content_type')
+      .count()
       .order('count', { ascending: false })
       .limit(limit * 2); // Fetch more than needed in case some content is no longer available
       
@@ -463,8 +463,8 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
       .filter(item => item.content_type === 'music')
       .map(item => item.content_id);
     
-    let artworks: Artwork[] = [];
-    let musicTracks: MusicTrack[] = [];
+    let artworks: any[] = [];
+    let musicTracks: any[] = [];
     
     // Fetch artworks
     if (artworkIds.length > 0) {

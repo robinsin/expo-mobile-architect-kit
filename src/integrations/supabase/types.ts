@@ -202,6 +202,39 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          actor_id: string
+          content_id: string | null
+          content_type: string | null
+          created_at: string
+          id: string
+          read: boolean
+          type: string
+          user_id: string
+        }
+        Insert: {
+          actor_id: string
+          content_id?: string | null
+          content_type?: string | null
+          created_at?: string
+          id?: string
+          read?: boolean
+          type: string
+          user_id: string
+        }
+        Update: {
+          actor_id?: string
+          content_id?: string | null
+          content_type?: string | null
+          created_at?: string
+          id?: string
+          read?: boolean
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           artist_type: string
