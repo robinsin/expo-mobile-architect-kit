@@ -88,3 +88,31 @@ export interface InspiredBy {
   title: string;
   type: string;
 }
+
+// New interfaces for notifications
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  content_id?: string;
+  content_type?: string;
+  actor_id: string;
+  read: boolean;
+  created_at: string;
+}
+
+export type NotificationType = 'like' | 'comment' | 'follow';
+
+// Interface for user stats
+export interface UserStats {
+  totalLikes: number;
+  totalFollowers: number;
+  totalFollowing: number;
+}
+
+// Interface for displaying followers/following
+export interface FollowConnection {
+  id: string;
+  profile: Profile;
+  created_at: string;
+}

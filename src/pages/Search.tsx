@@ -14,7 +14,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Artwork, MusicTrack, Content, Profile, Comment } from "@/types/social";
 import { 
   fetchProfiles, 
@@ -24,12 +24,14 @@ import {
   likeContent, 
   followUser, 
   addComment, 
-  saveInspirationSource 
+  saveInspirationSource,
+  fetchContentStats
 } from "@/utils/databaseUtils";
 
 const Search: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [allContent, setAllContent] = useState<Content[]>([]);
   const [filteredContent, setFilteredContent] = useState<Content[]>([]);
@@ -43,7 +45,21 @@ const Search: React.FC = () => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [activeTab, setActiveTab] = useState<"view" | "comments">("view");
+  const [contentStats, setContentStats] = useState<Record<string, { likes: number, comments: number }>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Process the URL query parameter for highlighting a specific item
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const highlightId = searchParams.get('highlight');
+    
+    if (highlightId && allContent.length > 0) {
+      const itemToHighlight = allContent.find(item => item.id === highlightId);
+      if (itemToHighlight) {
+        handleItemClick(itemToHighlight);
+      }
+    }
+  }, [location.search, allContent]);
   
   useEffect(() => {
     const fetchContent = async () => {
@@ -94,6 +110,41 @@ const Search: React.FC = () => {
           const followsMap = await fetchUserFollows(user.id);
           setFollowedUsers(followsMap);
         }
+        
+        // Fetch stats for all content
+        const statsMap: Record<string, { likes: number, comments: number }> = {};
+        
+        // Batch fetch likes counts
+        const { data: likesData, error: likesError } = await supabase
+          .from('likes')
+          .select('content_id, count(*)')
+          .group('content_id');
+          
+        if (!likesError && likesData) {
+          likesData.forEach(item => {
+            if (!statsMap[item.content_id]) {
+              statsMap[item.content_id] = { likes: 0, comments: 0 };
+            }
+            statsMap[item.content_id].likes = parseInt(item.count);
+          });
+        }
+        
+        // Batch fetch comments counts
+        const { data: commentsData, error: commentsError } = await supabase
+          .from('comments')
+          .select('content_id, count(*)')
+          .group('content_id');
+          
+        if (!commentsError && commentsData) {
+          commentsData.forEach(item => {
+            if (!statsMap[item.content_id]) {
+              statsMap[item.content_id] = { likes: 0, comments: 0 };
+            }
+            statsMap[item.content_id].comments = parseInt(item.count);
+          });
+        }
+        
+        setContentStats(statsMap);
       } catch (error: any) {
         toast({
           title: "Error fetching content",
@@ -125,7 +176,7 @@ const Search: React.FC = () => {
     setSearchTerm(e.target.value);
   };
   
-  const handleItemClick = (item: Content) => {
+  const handleItemClick = async (item: Content) => {
     setSelectedItem(item);
     setIsArtwork(item.type === 'artwork');
     setActiveTab("view");
@@ -136,9 +187,8 @@ const Search: React.FC = () => {
     }
     
     // Fetch comments for the selected item
-    fetchComments(item.id, item.type).then(commentsData => {
-      setComments(commentsData);
-    });
+    const commentsData = await fetchComments(item.id, item.type);
+    setComments(commentsData);
   };
   
   const handlePlayPause = () => {
@@ -186,6 +236,17 @@ const Search: React.FC = () => {
       ...prev,
       [item.id]: result
     }));
+    
+    // Update content stats
+    setContentStats(prev => ({
+      ...prev,
+      [item.id]: {
+        ...prev[item.id] || { likes: 0, comments: 0 },
+        likes: result 
+          ? (prev[item.id]?.likes || 0) + 1 
+          : Math.max((prev[item.id]?.likes || 0) - 1, 0)
+      }
+    }));
   };
   
   const handleFollow = async (userId: string, event?: React.MouseEvent) => {
@@ -229,6 +290,15 @@ const Search: React.FC = () => {
       // Update comments list
       setComments(prev => [newCommentObj, ...prev]);
       
+      // Update content stats
+      setContentStats(prev => ({
+        ...prev,
+        [selectedItem.id]: {
+          ...prev[selectedItem.id] || { likes: 0, comments: 0 },
+          comments: (prev[selectedItem.id]?.comments || 0) + 1
+        }
+      }));
+      
       // Clear input
       setNewComment("");
     }
@@ -253,6 +323,14 @@ const Search: React.FC = () => {
     
     // Redirect to upload page
     navigate('/upload');
+  };
+  
+  const handleViewArtistProfile = (userId: string, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    navigate(`/artist/${userId}`);
   };
   
   // Format duration from seconds to mm:ss
@@ -326,16 +404,27 @@ const Search: React.FC = () => {
                 </div>
                 <CardContent className="p-3">
                   <h3 className="font-medium text-sm truncate">{item.title}</h3>
-                  <div className="flex items-center text-xs text-muted-foreground">
+                  <div 
+                    className="flex items-center text-xs text-muted-foreground hover:underline"
+                    onClick={(e) => handleViewArtistProfile(item.user_id, e)}
+                  >
                     <span>By: {profiles[item.user_id]?.name || "Unknown Artist"}</span>
                   </div>
-                  {item.genre && (
-                    <div className="mt-1">
+                  <div className="flex items-center gap-3 mt-1">
+                    {item.genre && (
                       <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
                         {item.genre}
                       </span>
+                    )}
+                    <div className="flex items-center text-xs text-muted-foreground">
+                      <Heart className="h-3 w-3 mr-1 text-red-400" />
+                      <span>{contentStats[item.id]?.likes || 0}</span>
                     </div>
-                  )}
+                    <div className="flex items-center text-xs text-muted-foreground">
+                      <MessageSquare className="h-3 w-3 mr-1" />
+                      <span>{contentStats[item.id]?.comments || 0}</span>
+                    </div>
+                  </div>
                 </CardContent>
                 <CardFooter className="p-2 pt-0 flex justify-between">
                   <div className="flex gap-2">
@@ -424,7 +513,12 @@ const Search: React.FC = () => {
                     </AvatarFallback>
                   )}
                 </Avatar>
-                <span>{profiles[selectedItem.user_id]?.name || "Unknown Artist"}</span>
+                <span 
+                  className="cursor-pointer hover:underline"
+                  onClick={() => handleViewArtistProfile(selectedItem.user_id)}
+                >
+                  {profiles[selectedItem.user_id]?.name || "Unknown Artist"}
+                </span>
                 {selectedItem.genre && (
                   <span className="ml-2 bg-muted px-2 py-0.5 rounded-full text-xs">
                     {selectedItem.genre}
@@ -437,7 +531,9 @@ const Search: React.FC = () => {
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "view" | "comments")}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="view">View</TabsTrigger>
-              <TabsTrigger value="comments">Comments</TabsTrigger>
+              <TabsTrigger value="comments">
+                Comments ({comments.length})
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="view" className="mt-2">
@@ -480,6 +576,11 @@ const Search: React.FC = () => {
                       className={`h-4 w-4 mr-2 ${likedContent[selectedItem?.id || ''] ? "fill-red-500" : ""}`} 
                     />
                     {likedContent[selectedItem?.id || ''] ? "Liked" : "Like"}
+                    {selectedItem && (
+                      <span className="ml-1">
+                        ({contentStats[selectedItem.id]?.likes || 0})
+                      </span>
+                    )}
                   </Button>
                   <Button 
                     variant="outline" 
@@ -487,7 +588,12 @@ const Search: React.FC = () => {
                     onClick={() => setActiveTab("comments")}
                   >
                     <MessageSquare className="h-4 w-4 mr-2" />
-                    Comment
+                    Comments
+                    {selectedItem && (
+                      <span className="ml-1">
+                        ({contentStats[selectedItem.id]?.comments || 0})
+                      </span>
+                    )}
                   </Button>
                 </div>
                 <Button 
@@ -498,6 +604,13 @@ const Search: React.FC = () => {
                   Get Inspired
                 </Button>
               </div>
+              
+              {selectedItem?.description && (
+                <div className="mt-4">
+                  <h3 className="text-sm font-medium mb-1">Description</h3>
+                  <p className="text-sm text-muted-foreground">{selectedItem.description}</p>
+                </div>
+              )}
             </TabsContent>
             
             <TabsContent value="comments" className="mt-2 space-y-4">
@@ -541,7 +654,10 @@ const Search: React.FC = () => {
                       </Avatar>
                       <div className="flex-1">
                         <div className="flex justify-between">
-                          <span className="font-medium text-sm">
+                          <span 
+                            className="font-medium text-sm cursor-pointer hover:underline"
+                            onClick={() => handleViewArtistProfile(comment.user_id)}
+                          >
                             {comment.user_profile?.name || "User"}
                           </span>
                           <span className="text-xs text-muted-foreground">

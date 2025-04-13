@@ -1,5 +1,6 @@
+
 import { supabase } from "@/integrations/supabase/client";
-import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy } from "@/types/social";
+import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy, Notification, NotificationType, UserStats, FollowConnection } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
 
 export const fetchProfiles = async (userIds: string[]): Promise<Record<string, Profile>> => {
@@ -127,6 +128,11 @@ export const likeContent = async (
         
       if (error) throw error;
       
+      // Create notification for the content owner if not the same user
+      if (userId !== content.user_id) {
+        createNotification(content.user_id, userId, 'like', content.id, content.type);
+      }
+      
       toast({
         title: "Content liked!",
         variant: "default",
@@ -183,6 +189,9 @@ export const followUser = async (
         
       if (error) throw error;
       
+      // Create notification
+      createNotification(targetUserId, currentUserId, 'follow');
+      
       toast({
         title: "Following user!",
         variant: "default",
@@ -225,6 +234,18 @@ export const addComment = async (
         ...data[0],
         user_profile: userProfile
       };
+      
+      // Create notification for content owner
+      // First get the content to find its owner
+      const { data: contentData } = await supabase
+        .from(contentType === 'artwork' ? 'artworks' : 'music_tracks')
+        .select('user_id')
+        .eq('id', contentId)
+        .single();
+        
+      if (contentData && contentData.user_id !== userId) {
+        createNotification(contentData.user_id, userId, 'comment', contentId, contentType);
+      }
       
       toast({
         title: "Comment added",
@@ -311,5 +332,318 @@ export const updateUserSetting = async <T extends keyof UserSettings>(
   } catch (error: any) {
     console.error(`Error updating ${key}:`, error);
     return false;
+  }
+};
+
+// New functions for the requested features
+
+export const fetchContentStats = async (contentId: string): Promise<{ likes: number, comments: number }> => {
+  try {
+    // Fetch likes count
+    const { count: likesCount, error: likesError } = await supabase
+      .from('likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('content_id', contentId);
+      
+    if (likesError) throw likesError;
+    
+    // Fetch comments count
+    const { count: commentsCount, error: commentsError } = await supabase
+      .from('comments')
+      .select('*', { count: 'exact', head: true })
+      .eq('content_id', contentId);
+      
+    if (commentsError) throw commentsError;
+    
+    return {
+      likes: likesCount || 0,
+      comments: commentsCount || 0
+    };
+  } catch (error: any) {
+    console.error('Error fetching content stats:', error);
+    return { likes: 0, comments: 0 };
+  }
+};
+
+export const fetchUserProfile = async (userId: string): Promise<Profile | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+      
+    if (error) throw error;
+    
+    return data;
+  } catch (error: any) {
+    console.error('Error fetching user profile:', error);
+    return null;
+  }
+};
+
+export const fetchUserStats = async (userId: string): Promise<UserStats> => {
+  try {
+    // Fetch total likes received on user's content
+    const { data: artworks } = await supabase
+      .from('artworks')
+      .select('id')
+      .eq('user_id', userId);
+      
+    const { data: musicTracks } = await supabase
+      .from('music_tracks')
+      .select('id')
+      .eq('user_id', userId);
+      
+    let contentIds: string[] = [
+      ...(artworks || []).map(a => a.id),
+      ...(musicTracks || []).map(m => m.id)
+    ];
+    
+    let totalLikes = 0;
+    
+    if (contentIds.length > 0) {
+      const { count, error } = await supabase
+        .from('likes')
+        .select('*', { count: 'exact', head: true })
+        .in('content_id', contentIds);
+        
+      if (!error) {
+        totalLikes = count || 0;
+      }
+    }
+    
+    // Fetch followers count
+    const { count: followersCount, error: followersError } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('followed_id', userId);
+      
+    if (followersError) throw followersError;
+    
+    // Fetch following count
+    const { count: followingCount, error: followingError } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('follower_id', userId);
+      
+    if (followingError) throw followingError;
+    
+    return {
+      totalLikes,
+      totalFollowers: followersCount || 0,
+      totalFollowing: followingCount || 0
+    };
+  } catch (error: any) {
+    console.error('Error fetching user stats:', error);
+    return { totalLikes: 0, totalFollowers: 0, totalFollowing: 0 };
+  }
+};
+
+export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
+  try {
+    // Get most liked content IDs
+    const { data: likesData } = await supabase
+      .from('likes')
+      .select('content_id, content_type, count(*)')
+      .group('content_id, content_type')
+      .order('count', { ascending: false })
+      .limit(limit * 2); // Fetch more than needed in case some content is no longer available
+      
+    if (!likesData || likesData.length === 0) {
+      return [];
+    }
+    
+    // Separate artwork and music IDs
+    const artworkIds = likesData
+      .filter(item => item.content_type === 'artwork')
+      .map(item => item.content_id);
+      
+    const musicIds = likesData
+      .filter(item => item.content_type === 'music')
+      .map(item => item.content_id);
+    
+    let artworks: Artwork[] = [];
+    let musicTracks: MusicTrack[] = [];
+    
+    // Fetch artworks
+    if (artworkIds.length > 0) {
+      const { data: artworksData } = await supabase
+        .from('artworks')
+        .select('*')
+        .in('id', artworkIds);
+        
+      if (artworksData) {
+        artworks = artworksData.map(art => ({ ...art, type: 'artwork' as const }));
+      }
+    }
+    
+    // Fetch music
+    if (musicIds.length > 0) {
+      const { data: musicData } = await supabase
+        .from('music_tracks')
+        .select('*')
+        .in('id', musicIds);
+        
+      if (musicData) {
+        musicTracks = musicData.map(track => ({ ...track, type: 'music' as const }));
+      }
+    }
+    
+    // Combine and sort by likes
+    const content = [...artworks, ...musicTracks];
+    
+    // Map content to like counts and sort
+    const contentWithRank = content.map(item => {
+      const likeInfo = likesData.find(l => l.content_id === item.id);
+      return {
+        content: item,
+        likeCount: likeInfo ? parseInt(likeInfo.count) : 0
+      };
+    });
+    
+    contentWithRank.sort((a, b) => b.likeCount - a.likeCount);
+    
+    return contentWithRank.slice(0, limit).map(item => item.content);
+  } catch (error: any) {
+    console.error('Error fetching most liked content:', error);
+    return [];
+  }
+};
+
+export const fetchFollowers = async (userId: string): Promise<FollowConnection[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('follows')
+      .select('id, follower_id, created_at')
+      .eq('followed_id', userId)
+      .order('created_at', { ascending: false });
+      
+    if (error) throw error;
+    
+    if (!data || data.length === 0) {
+      return [];
+    }
+    
+    // Get all follower profiles
+    const followerIds = data.map(follow => follow.follower_id);
+    const profiles = await fetchProfiles(followerIds);
+    
+    return data.map(follow => ({
+      id: follow.id,
+      profile: profiles[follow.follower_id],
+      created_at: follow.created_at
+    }));
+  } catch (error: any) {
+    console.error('Error fetching followers:', error);
+    return [];
+  }
+};
+
+export const fetchFollowing = async (userId: string): Promise<FollowConnection[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('follows')
+      .select('id, followed_id, created_at')
+      .eq('follower_id', userId)
+      .order('created_at', { ascending: false });
+      
+    if (error) throw error;
+    
+    if (!data || data.length === 0) {
+      return [];
+    }
+    
+    // Get all followed profiles
+    const followedIds = data.map(follow => follow.followed_id);
+    const profiles = await fetchProfiles(followedIds);
+    
+    return data.map(follow => ({
+      id: follow.id,
+      profile: profiles[follow.followed_id],
+      created_at: follow.created_at
+    }));
+  } catch (error: any) {
+    console.error('Error fetching following:', error);
+    return [];
+  }
+};
+
+export const createNotification = async (
+  userId: string,
+  actorId: string,
+  type: NotificationType,
+  contentId?: string,
+  contentType?: string
+): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: userId,
+        actor_id: actorId,
+        type,
+        content_id: contentId,
+        content_type: contentType,
+        read: false
+      });
+      
+    if (error) throw error;
+    
+    return true;
+  } catch (error: any) {
+    console.error('Error creating notification:', error);
+    return false;
+  }
+};
+
+export const fetchNotifications = async (userId: string): Promise<Notification[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+      
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error: any) {
+    console.error('Error fetching notifications:', error);
+    return [];
+  }
+};
+
+export const markNotificationAsRead = async (notificationId: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId);
+      
+    if (error) throw error;
+    
+    return true;
+  } catch (error: any) {
+    console.error('Error marking notification as read:', error);
+    return false;
+  }
+};
+
+export const getUnreadNotificationsCount = async (userId: string): Promise<number> => {
+  try {
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('read', false);
+      
+    if (error) throw error;
+    
+    return count || 0;
+  } catch (error: any) {
+    console.error('Error counting unread notifications:', error);
+    return 0;
   }
 };
