@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
@@ -17,21 +16,11 @@ import { Form, FormField, FormItem, FormLabel, FormControl } from "@/components/
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-
-interface UserSettings {
-  id?: string;
-  user_id: string;
-  dark_mode: boolean;
-  push_notifications: boolean;
-  email_notifications: boolean;
-  privacy_mode: "public" | "followers" | "private";
-  created_at?: string;
-  updated_at?: string;
-}
+import { PrivacyMode, UserSettings as UserSettingsType } from "@/types/social";
 
 const Settings: React.FC = () => {
   const { user } = useAuth();
-  const [settings, setSettings] = useState<UserSettings>({
+  const [settings, setSettings] = useState<UserSettingsType>({
     user_id: "",
     dark_mode: false,
     push_notifications: false,
@@ -43,7 +32,7 @@ const Settings: React.FC = () => {
 
   const privacyForm = useForm({
     defaultValues: {
-      privacy_mode: "public" as "public" | "followers" | "private"
+      privacy_mode: "public" as PrivacyMode
     }
   });
 
@@ -71,19 +60,22 @@ const Settings: React.FC = () => {
         
         // If settings exist, use them
         if (data) {
+          // Ensure privacy_mode is one of the allowed values
+          const privacyMode = validatePrivacyMode(data.privacy_mode);
+          
           setSettings({
             id: data.id,
             user_id: data.user_id,
             dark_mode: data.dark_mode || getInitialTheme(),
             push_notifications: data.push_notifications || false,
             email_notifications: data.email_notifications || false,
-            privacy_mode: data.privacy_mode || "public"
+            privacy_mode: privacyMode
           });
           
-          privacyForm.setValue('privacy_mode', data.privacy_mode || "public");
+          privacyForm.setValue('privacy_mode', privacyMode);
         } else {
           // Create default settings
-          const defaultSettings: UserSettings = {
+          const defaultSettings: UserSettingsType = {
             user_id: user.id,
             dark_mode: getInitialTheme(),
             push_notifications: false,
@@ -106,7 +98,7 @@ const Settings: React.FC = () => {
               dark_mode: newSettings.dark_mode,
               push_notifications: newSettings.push_notifications,
               email_notifications: newSettings.email_notifications,
-              privacy_mode: newSettings.privacy_mode
+              privacy_mode: validatePrivacyMode(newSettings.privacy_mode)
             });
           }
         }
@@ -124,7 +116,14 @@ const Settings: React.FC = () => {
     fetchSettings();
   }, [user, privacyForm]);
 
-  const updateSetting = async (key: keyof UserSettings, value: any) => {
+  const validatePrivacyMode = (mode: any): PrivacyMode => {
+    if (mode === "public" || mode === "followers" || mode === "private") {
+      return mode;
+    }
+    return "public"; // Default to public if invalid value
+  };
+
+  const updateSetting = async (key: keyof UserSettingsType, value: any) => {
     if (!user) return;
     
     try {
@@ -170,7 +169,7 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handlePrivacySubmit = async (formData: { privacy_mode: "public" | "followers" | "private" }) => {
+  const handlePrivacySubmit = async (formData: { privacy_mode: PrivacyMode }) => {
     if (!user) return;
     
     try {

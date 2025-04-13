@@ -1,6 +1,5 @@
-
 import { supabase } from "@/integrations/supabase/client";
-import { Like, Comment, Follow, Profile, Content, UserSettings } from "@/types/social";
+import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
 
 export const fetchProfiles = async (userIds: string[]): Promise<Record<string, Profile>> => {
@@ -14,7 +13,6 @@ export const fetchProfiles = async (userIds: string[]): Promise<Record<string, P
       
     if (error) throw error;
     
-    // Create a map of user_id to profile data
     const profilesMap = (data || []).reduce((acc, profile) => {
       acc[profile.id] = profile;
       return acc;
@@ -80,11 +78,9 @@ export const fetchComments = async (contentId: string, contentType: string): Pro
       
     if (error) throw error;
     
-    // Fetch user profiles for the comments
     const userIds = [...new Set((data || []).map(comment => comment.user_id))];
     const profiles = await fetchProfiles(userIds);
     
-    // Add user profile to each comment
     const commentsWithProfiles = (data || []).map(comment => {
       return {
         ...comment,
@@ -106,7 +102,6 @@ export const likeContent = async (
 ): Promise<boolean> => {
   try {
     if (isLiked) {
-      // Remove like
       const { error } = await supabase
         .from('likes')
         .delete()
@@ -122,7 +117,6 @@ export const likeContent = async (
       
       return false;
     } else {
-      // Add like
       const { error } = await supabase
         .from('likes')
         .insert({
@@ -165,7 +159,6 @@ export const followUser = async (
     }
     
     if (isFollowing) {
-      // Unfollow
       const { error } = await supabase
         .from('follows')
         .delete()
@@ -181,7 +174,6 @@ export const followUser = async (
       
       return false;
     } else {
-      // Follow
       const { error } = await supabase
         .from('follows')
         .insert({
@@ -229,7 +221,6 @@ export const addComment = async (
     if (error) throw error;
     
     if (data && data.length > 0) {
-      // Add user profile to the new comment
       const newComment: Comment = {
         ...data[0],
         user_profile: userProfile
@@ -278,11 +269,27 @@ export const fetchUserSettings = async (userId: string): Promise<UserSettings | 
       
     if (error) throw error;
     
-    return data as UserSettings;
+    if (data) {
+      const privacyMode = validatePrivacyMode(data.privacy_mode);
+      
+      return {
+        ...data,
+        privacy_mode: privacyMode
+      } as UserSettings;
+    }
+    
+    return null;
   } catch (error: any) {
     console.error('Error fetching user settings:', error);
     return null;
   }
+};
+
+const validatePrivacyMode = (mode: any): PrivacyMode => {
+  if (mode === "public" || mode === "followers" || mode === "private") {
+    return mode;
+  }
+  return "public";
 };
 
 export const updateUserSetting = async <T extends keyof UserSettings>(

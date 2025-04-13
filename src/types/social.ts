@@ -69,13 +69,15 @@ export interface Inspiration {
   created_at: string;
 }
 
+export type PrivacyMode = "public" | "followers" | "private";
+
 export interface UserSettings {
   id?: string;
   user_id: string;
   dark_mode: boolean;
   push_notifications: boolean;
   email_notifications: boolean;
-  privacy_mode: "public" | "followers" | "private";
+  privacy_mode: PrivacyMode;
   created_at?: string;
   updated_at?: string;
 }
