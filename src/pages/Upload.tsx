@@ -14,12 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "react-router-dom";
 import GenreSelect from "@/components/GenreSelect";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
-interface InspiredBy {
-  id: string;
-  title: string;
-  type: string;
-}
+import { InspiredBy } from "@/types/social";
 
 const Upload: React.FC = () => {
   const { user } = useAuth();
@@ -122,8 +117,10 @@ const Upload: React.FC = () => {
         .getPublicUrl(fileName);
         
       // Insert record into the appropriate table
+      let newContentId = '';
+      
       if (type === 'visual') {
-        const { error: insertError } = await supabase
+        const { data: artworkData, error: insertError } = await supabase
           .from('artworks')
           .insert({
             title: title,
@@ -132,9 +129,13 @@ const Upload: React.FC = () => {
             image_url: publicUrl,
             user_id: user.id,
             genre: genre || undefined
-          });
+          })
+          .select('id')
+          .single();
           
         if (insertError) throw insertError;
+        
+        newContentId = artworkData.id;
         
         // If this was inspired by another work, create the inspiration relationship
         if (inspiredBy) {
@@ -143,7 +144,7 @@ const Upload: React.FC = () => {
             .insert({
               source_id: inspiredBy.id,
               source_type: inspiredBy.type,
-              inspired_id: data?.path || '', // This might need to be adjusted to get the actual ID
+              inspired_id: newContentId,
               inspired_type: 'artwork'
             });
             
@@ -154,7 +155,7 @@ const Upload: React.FC = () => {
         // In a real app, you might want to analyze the audio file to get the actual duration
         const approximateDuration = 180; // 3 minutes in seconds
         
-        const { error: insertError } = await supabase
+        const { data: musicData, error: insertError } = await supabase
           .from('music_tracks')
           .insert({
             title: title,
@@ -164,9 +165,13 @@ const Upload: React.FC = () => {
             user_id: user.id,
             duration: approximateDuration,
             genre: genre || undefined
-          });
+          })
+          .select('id')
+          .single();
           
         if (insertError) throw insertError;
+        
+        newContentId = musicData.id;
         
         // If this was inspired by another work, create the inspiration relationship
         if (inspiredBy) {
@@ -175,7 +180,7 @@ const Upload: React.FC = () => {
             .insert({
               source_id: inspiredBy.id,
               source_type: inspiredBy.type,
-              inspired_id: data?.path || '', // This might need to be adjusted to get the actual ID
+              inspired_id: newContentId,
               inspired_type: 'music'
             });
             

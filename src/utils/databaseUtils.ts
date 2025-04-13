@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode } from "@/types/social";
+import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
 
 export const fetchProfiles = async (userIds: string[]): Promise<Record<string, Profile>> => {
@@ -245,13 +245,15 @@ export const addComment = async (
   }
 };
 
-export const saveInspirationSource = async (contentId: string, contentTitle: string, contentType: string) => {
+export const saveInspirationSource = async (contentId: string, contentTitle: string, contentType: string): Promise<boolean> => {
   try {
-    localStorage.setItem('inspired_by', JSON.stringify({
+    const inspirationData: InspiredBy = {
       id: contentId,
       title: contentTitle,
       type: contentType
-    }));
+    };
+    
+    localStorage.setItem('inspired_by', JSON.stringify(inspirationData));
     return true;
   } catch (error) {
     console.error('Error saving inspiration source:', error);

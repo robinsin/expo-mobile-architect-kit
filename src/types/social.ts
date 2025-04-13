@@ -81,3 +81,10 @@ export interface UserSettings {
   created_at?: string;
   updated_at?: string;
 }
+
+// Add proper interface for the inspired by source
+export interface InspiredBy {
+  id: string;
+  title: string;
+  type: string;
+}
