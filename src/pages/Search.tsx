@@ -4,11 +4,17 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Image, GalleryHorizontal, Search as SearchIcon, Music, X } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Image, GalleryHorizontal, Search as SearchIcon, Music, X, Heart, MessageSquare, UserPlus } from "lucide-react";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 interface Artwork {
   id: string;
@@ -16,6 +22,8 @@ interface Artwork {
   image_url: string;
   created_at: string;
   user_id: string;
+  genre?: string;
+  type: string; // Added type property
 }
 
 interface MusicTrack {
@@ -25,18 +33,44 @@ interface MusicTrack {
   created_at: string;
   user_id: string;
   duration: number;
+  genre?: string;
+  type: string; // Already has type property
 }
 
-type Content = Artwork | MusicTrack & { type: 'artwork' | 'music' };
+interface Profile {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+}
+
+interface Comment {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  content_id: string;
+  content_type: string;
+  user_profile?: Profile;
+}
+
+type Content = Artwork | MusicTrack;
 
 const Search: React.FC = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
-  const [allContent, setAllContent] = useState<(Artwork | MusicTrack & { type: string })[]>([]);
-  const [filteredContent, setFilteredContent] = useState<(Artwork | MusicTrack & { type: string })[]>([]);
+  const [allContent, setAllContent] = useState<Content[]>([]);
+  const [filteredContent, setFilteredContent] = useState<Content[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<(Artwork | MusicTrack) | null>(null);
+  const [selectedItem, setSelectedItem] = useState<Content | null>(null);
   const [isArtwork, setIsArtwork] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [profiles, setProfiles] = useState<{[key: string]: Profile}>({});
+  const [likedContent, setLikedContent] = useState<{[key: string]: boolean}>({});
+  const [followedUsers, setFollowedUsers] = useState<{[key: string]: boolean}>({});
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [activeTab, setActiveTab] = useState<"view" | "comments">("view");
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   
   useEffect(() => {
@@ -71,6 +105,55 @@ const Search: React.FC = () => {
         
         setAllContent(combined);
         setFilteredContent(combined);
+        
+        // Fetch all user profiles for the content
+        const userIds = [...new Set(combined.map(item => item.user_id))];
+        if (userIds.length > 0) {
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, name, avatar_url')
+            .in('id', userIds);
+            
+          if (profilesError) throw profilesError;
+          
+          // Create a map of user_id to profile data
+          const profilesMap = (profilesData || []).reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {} as {[key: string]: Profile});
+          
+          setProfiles(profilesMap);
+        }
+        
+        // Fetch user likes if logged in
+        if (user) {
+          const { data: likes, error: likesError } = await supabase
+            .from('likes')
+            .select('content_id')
+            .eq('user_id', user.id);
+            
+          if (!likesError && likes) {
+            const likedMap = likes.reduce((acc, like) => {
+              acc[like.content_id] = true;
+              return acc;
+            }, {} as {[key: string]: boolean});
+            setLikedContent(likedMap);
+          }
+          
+          // Fetch user follows
+          const { data: follows, error: followsError } = await supabase
+            .from('follows')
+            .select('followed_id')
+            .eq('follower_id', user.id);
+            
+          if (!followsError && follows) {
+            const followsMap = follows.reduce((acc, follow) => {
+              acc[follow.followed_id] = true;
+              return acc;
+            }, {} as {[key: string]: boolean});
+            setFollowedUsers(followsMap);
+          }
+        }
       } catch (error: any) {
         toast({
           title: "Error fetching content",
@@ -83,7 +166,7 @@ const Search: React.FC = () => {
     };
     
     fetchContent();
-  }, []);
+  }, [user]);
   
   // Filter content based on search term
   useEffect(() => {
@@ -91,7 +174,8 @@ const Search: React.FC = () => {
       setFilteredContent(allContent);
     } else {
       const filtered = allContent.filter(item => 
-        item.title.toLowerCase().includes(searchTerm.toLowerCase())
+        item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.genre && item.genre.toLowerCase().includes(searchTerm.toLowerCase()))
       );
       setFilteredContent(filtered);
     }
@@ -101,13 +185,67 @@ const Search: React.FC = () => {
     setSearchTerm(e.target.value);
   };
   
-  const handleItemClick = (item: Artwork | MusicTrack & { type: string }) => {
+  const handleItemClick = (item: Content) => {
     setSelectedItem(item);
     setIsArtwork(item.type === 'artwork');
+    setActiveTab("view");
     
     // Reset audio state if selecting a new music track
     if (item.type === 'music') {
       setIsPlaying(false);
+    }
+    
+    // Fetch comments for the selected item
+    fetchComments(item.id, item.type);
+  };
+  
+  const fetchComments = async (contentId: string, contentType: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select(`
+          id, 
+          content, 
+          created_at, 
+          user_id, 
+          content_id, 
+          content_type
+        `)
+        .eq('content_id', contentId)
+        .eq('content_type', contentType)
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      
+      // Fetch user profiles for the comments
+      const userIds = [...new Set((data || []).map(comment => comment.user_id))];
+      if (userIds.length > 0) {
+        const { data: commentProfiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, name, avatar_url')
+          .in('id', userIds);
+          
+        if (profilesError) throw profilesError;
+        
+        // Add user profile to each comment
+        const commentsWithProfiles = (data || []).map(comment => {
+          const userProfile = commentProfiles?.find(profile => profile.id === comment.user_id);
+          return {
+            ...comment,
+            user_profile: userProfile || undefined
+          };
+        });
+        
+        setComments(commentsWithProfiles);
+      } else {
+        setComments(data || []);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error fetching comments",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
   
@@ -134,11 +272,235 @@ const Search: React.FC = () => {
     }
   };
   
+  const handleLike = async (item: Content, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to like content",
+        variant: "default",
+      });
+      return;
+    }
+    
+    try {
+      // Check if already liked
+      const isLiked = likedContent[item.id];
+      
+      if (isLiked) {
+        // Remove like
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('content_id', item.id);
+          
+        if (error) throw error;
+        
+        // Update local state
+        setLikedContent(prev => {
+          const updated = {...prev};
+          delete updated[item.id];
+          return updated;
+        });
+        
+        toast({
+          title: "Like removed",
+          variant: "default",
+        });
+      } else {
+        // Add like
+        const { error } = await supabase
+          .from('likes')
+          .insert({
+            user_id: user.id,
+            content_id: item.id,
+            content_type: item.type
+          });
+          
+        if (error) throw error;
+        
+        // Update local state
+        setLikedContent(prev => ({
+          ...prev,
+          [item.id]: true
+        }));
+        
+        toast({
+          title: "Content liked!",
+          variant: "default",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleFollow = async (userId: string, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to follow users",
+        variant: "default",
+      });
+      return;
+    }
+    
+    if (user.id === userId) {
+      toast({
+        title: "Cannot follow yourself",
+        variant: "default",
+      });
+      return;
+    }
+    
+    try {
+      const isFollowing = followedUsers[userId];
+      
+      if (isFollowing) {
+        // Unfollow
+        const { error } = await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', user.id)
+          .eq('followed_id', userId);
+          
+        if (error) throw error;
+        
+        // Update local state
+        setFollowedUsers(prev => {
+          const updated = {...prev};
+          delete updated[userId];
+          return updated;
+        });
+        
+        toast({
+          title: "Unfollowed user",
+          variant: "default",
+        });
+      } else {
+        // Follow
+        const { error } = await supabase
+          .from('follows')
+          .insert({
+            follower_id: user.id,
+            followed_id: userId
+          });
+          
+        if (error) throw error;
+        
+        // Update local state
+        setFollowedUsers(prev => ({
+          ...prev,
+          [userId]: true
+        }));
+        
+        toast({
+          title: "Following user!",
+          variant: "default",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleComment = async () => {
+    if (!user || !selectedItem || !newComment.trim()) {
+      return;
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .insert({
+          user_id: user.id,
+          content_id: selectedItem.id,
+          content_type: selectedItem.type,
+          content: newComment.trim()
+        })
+        .select();
+        
+      if (error) throw error;
+      
+      // Add user profile to the new comment
+      const newCommentWithProfile = {
+        ...data![0],
+        user_profile: profiles[user.id]
+      };
+      
+      // Update comments list
+      setComments(prev => [newCommentWithProfile, ...prev]);
+      
+      // Clear input
+      setNewComment("");
+      
+      toast({
+        title: "Comment added",
+        variant: "default",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error adding comment",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleInspiredByClick = async (item: Content, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please login to mark as inspiration",
+        variant: "default",
+      });
+      return;
+    }
+    
+    // Store inspiration in local storage before redirecting
+    localStorage.setItem('inspired_by', JSON.stringify({
+      id: item.id,
+      title: item.title,
+      type: item.type
+    }));
+    
+    // Redirect to upload page
+    navigate('/upload');
+  };
+  
   // Format duration from seconds to mm:ss
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  };
+  
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase();
   };
   
   return (
@@ -197,18 +559,65 @@ const Search: React.FC = () => {
                 </div>
                 <CardContent className="p-3">
                   <h3 className="font-medium text-sm truncate">{item.title}</h3>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(item.created_at).toLocaleDateString()}
-                    </p>
-                    {item.type === 'music' && (
-                      <p className="text-xs text-purple-500 flex items-center">
-                        <Music className="h-3 w-3 mr-1" />
-                        {formatDuration((item as MusicTrack).duration)}
-                      </p>
-                    )}
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <span>By: {profiles[item.user_id]?.name || "Unknown Artist"}</span>
                   </div>
+                  {item.genre && (
+                    <div className="mt-1">
+                      <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
+                        {item.genre}
+                      </span>
+                    </div>
+                  )}
                 </CardContent>
+                <CardFooter className="p-2 pt-0 flex justify-between">
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={(e) => handleLike(item, e)}
+                    >
+                      <Heart 
+                        className={`h-4 w-4 ${likedContent[item.id] ? "fill-red-500 text-red-500" : ""}`} 
+                      />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleItemClick(item);
+                        setActiveTab("comments");
+                      }}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={(e) => handleInspiredByClick(item, e)}
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 4L3 10M3 10L9 16M3 10H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={(e) => handleFollow(item.user_id, e)}
+                    >
+                      <UserPlus 
+                        className={`h-4 w-4 ${followedUsers[item.user_id] ? "text-purple-500" : ""}`} 
+                      />
+                    </Button>
+                  </div>
+                </CardFooter>
               </Card>
             ))}
           </div>
@@ -237,40 +646,153 @@ const Search: React.FC = () => {
                 </Button>
               </DialogClose>
             </DialogTitle>
+            {selectedItem && (
+              <div className="flex items-center mt-1 text-sm text-muted-foreground">
+                <Avatar className="h-5 w-5 mr-2">
+                  {profiles[selectedItem.user_id]?.avatar_url ? (
+                    <AvatarImage src={profiles[selectedItem.user_id].avatar_url || ''} />
+                  ) : (
+                    <AvatarFallback>
+                      {getInitials(profiles[selectedItem.user_id]?.name || 'U')}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <span>{profiles[selectedItem.user_id]?.name || "Unknown Artist"}</span>
+                {selectedItem.genre && (
+                  <span className="ml-2 bg-muted px-2 py-0.5 rounded-full text-xs">
+                    {selectedItem.genre}
+                  </span>
+                )}
+              </div>
+            )}
           </DialogHeader>
           
-          <div className="mt-2">
-            {isArtwork && selectedItem && 'image_url' in selectedItem ? (
-              <div className="flex justify-center">
-                <img 
-                  src={(selectedItem as Artwork).image_url} 
-                  alt={selectedItem.title} 
-                  className="max-h-[70vh] w-auto object-contain rounded"
-                />
-              </div>
-            ) : selectedItem && 'audio_url' in selectedItem ? (
-              <div className="space-y-4">
-                <div className="h-40 flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
-                  <Music className="h-20 w-20 text-purple-500" />
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "view" | "comments")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="view">View</TabsTrigger>
+              <TabsTrigger value="comments">Comments</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="view" className="mt-2">
+              {isArtwork && selectedItem && 'image_url' in selectedItem ? (
+                <div className="flex justify-center">
+                  <img 
+                    src={(selectedItem as Artwork).image_url} 
+                    alt={selectedItem.title} 
+                    className="max-h-[70vh] w-auto object-contain rounded"
+                  />
                 </div>
-                <audio 
-                  ref={audioRef} 
-                  src={(selectedItem as MusicTrack).audio_url} 
-                  onEnded={handleAudioEnded}
-                  className="hidden"
-                />
-                <div className="flex items-center justify-center">
-                  <Button onClick={handlePlayPause} className="px-8">
-                    {isPlaying ? "Pause" : "Play"}
+              ) : selectedItem && 'audio_url' in selectedItem ? (
+                <div className="space-y-4">
+                  <div className="h-40 flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
+                    <Music className="h-20 w-20 text-purple-500" />
+                  </div>
+                  <audio 
+                    ref={audioRef} 
+                    src={(selectedItem as MusicTrack).audio_url} 
+                    onEnded={handleAudioEnded}
+                    className="hidden"
+                  />
+                  <div className="flex items-center justify-center">
+                    <Button onClick={handlePlayPause} className="px-8">
+                      {isPlaying ? "Pause" : "Play"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              
+              <div className="flex justify-between mt-4">
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className={likedContent[selectedItem?.id || ''] ? "text-red-500 border-red-500" : ""}
+                    onClick={() => selectedItem && handleLike(selectedItem)}
+                  >
+                    <Heart 
+                      className={`h-4 w-4 mr-2 ${likedContent[selectedItem?.id || ''] ? "fill-red-500" : ""}`} 
+                    />
+                    {likedContent[selectedItem?.id || ''] ? "Liked" : "Like"}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setActiveTab("comments")}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Comment
                   </Button>
                 </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => selectedItem && handleInspiredByClick(selectedItem)}
+                >
+                  Get Inspired
+                </Button>
               </div>
-            ) : null}
-          </div>
-          
-          <p className="text-sm text-muted-foreground mt-4">
-            Created on {selectedItem && new Date(selectedItem.created_at).toLocaleDateString()}
-          </p>
+            </TabsContent>
+            
+            <TabsContent value="comments" className="mt-2 space-y-4">
+              {user ? (
+                <div className="flex gap-2">
+                  <Textarea 
+                    placeholder="Add a comment..." 
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    className="resize-none"
+                  />
+                  <Button 
+                    onClick={handleComment} 
+                    disabled={!newComment.trim()}
+                  >
+                    Post
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-sm text-center py-2 text-muted-foreground">
+                  <Button variant="link" onClick={() => navigate('/auth')}>
+                    Login to comment
+                  </Button>
+                </div>
+              )}
+              
+              <Separator />
+              
+              <div className="space-y-4">
+                {comments.length > 0 ? (
+                  comments.map(comment => (
+                    <div key={comment.id} className="flex gap-3">
+                      <Avatar className="h-8 w-8">
+                        {comment.user_profile?.avatar_url ? (
+                          <AvatarImage src={comment.user_profile.avatar_url} />
+                        ) : (
+                          <AvatarFallback>
+                            {getInitials(comment.user_profile?.name || 'U')}
+                          </AvatarFallback>
+                        )}
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="flex justify-between">
+                          <span className="font-medium text-sm">
+                            {comment.user_profile?.name || "User"}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(comment.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm mt-1">{comment.content}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p>No comments yet</p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>
