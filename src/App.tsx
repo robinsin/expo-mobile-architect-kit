@@ -18,8 +18,8 @@ import { AuthProvider } from "@/context/AuthContext";
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
+    <Router>
+      <AuthProvider>
         <Routes>
           <Route path="/" element={<MobileLayout />}>
             <Route index element={<Index />} />
@@ -55,8 +55,8 @@ function App() {
           </Route>
         </Routes>
         <Toaster />
-      </Router>
-    </AuthProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 
