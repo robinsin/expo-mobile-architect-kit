@@ -243,6 +243,8 @@ export type Database = {
           bio: string | null
           created_at: string | null
           id: string
+          likes_credit: number | null
+          likes_points: number | null
           name: string
           updated_at: string | null
           website: string | null
@@ -254,6 +256,8 @@ export type Database = {
           bio?: string | null
           created_at?: string | null
           id: string
+          likes_credit?: number | null
+          likes_points?: number | null
           name: string
           updated_at?: string | null
           website?: string | null
@@ -265,6 +269,8 @@ export type Database = {
           bio?: string | null
           created_at?: string | null
           id?: string
+          likes_credit?: number | null
+          likes_points?: number | null
           name?: string
           updated_at?: string | null
           website?: string | null
@@ -309,7 +315,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      decrement_likes_points: {
+        Args: { user_id: string }
+        Returns: undefined
+      }
+      increment_likes_points: {
+        Args: { user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
