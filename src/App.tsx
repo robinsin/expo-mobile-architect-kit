@@ -12,6 +12,7 @@ import Upload from "./pages/Upload";
 import Search from "./pages/Search";
 import Inspired from "./pages/Inspired";
 import ArtistProfile from "./pages/ArtistProfile";
+import ArtworkDetail from "./pages/ArtworkDetail";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from "@/context/AuthContext";
@@ -51,6 +52,7 @@ function App() {
             <Route path="search" element={<Search />} />
             <Route path="inspired" element={<Inspired />} />
             <Route path="artist/:userId" element={<ArtistProfile />} />
+            <Route path="artwork/:id" element={<ArtworkDetail />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

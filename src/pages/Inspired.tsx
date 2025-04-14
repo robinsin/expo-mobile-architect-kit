@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -179,7 +180,11 @@ const Inspired: React.FC = () => {
   };
   
   const handleViewContent = (content: Content) => {
-    navigate(`/search?highlight=${content.id}`);
+    if (content.type === 'artwork') {
+      navigate(`/artwork/${content.id}`);
+    } else {
+      navigate(`/search?highlight=${content.id}`);
+    }
   };
   
   const handleViewArtistProfile = (userId: string, event?: React.MouseEvent) => {
@@ -249,7 +254,7 @@ const Inspired: React.FC = () => {
           {inspirations.map((inspiration) => (
             <Card 
               key={inspiration.id} 
-              className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+              className="overflow-hidden hover:shadow-md transition-shadow"
             >
               <CardContent className="p-3">
                 <div className="flex flex-col md:flex-row items-center gap-3 mb-3">
@@ -264,10 +269,13 @@ const Inspired: React.FC = () => {
                   </div>
                 </div>
                 
-                <div className="flex gap-2 items-center justify-between">
-                  <div className="flex-1">
+                <div className="flex items-center justify-center gap-2">
+                  <div 
+                    className="flex-1 cursor-pointer" 
+                    onClick={() => handleViewContent(inspiration.sourceItem)}
+                  >
                     {inspiration.sourceItem.type === 'artwork' ? (
-                      <div className="aspect-square h-16 w-16 rounded overflow-hidden">
+                      <div className="aspect-square h-32 w-full rounded overflow-hidden">
                         <img 
                           src={inspiration.sourceItem.image_url} 
                           alt="" 
@@ -275,18 +283,24 @@ const Inspired: React.FC = () => {
                         />
                       </div>
                     ) : (
-                      <div className="h-16 w-16 flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
-                        <Music className="h-8 w-8 text-purple-500" />
+                      <div className="h-32 w-full flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
+                        <Music className="h-12 w-12 text-purple-500" />
                       </div>
                     )}
-                    <div className="text-xs mt-1 truncate w-16 text-center">{inspiration.sourceItem.title}</div>
+                    <div className="text-sm mt-1 font-medium truncate">{inspiration.sourceItem.title}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      by {profiles[inspiration.sourceItem.user_id]?.name || 'Artist'}
+                    </div>
                   </div>
                   
-                  <Link2 className="h-5 w-5 text-purple-400" />
+                  <Link2 className="h-6 w-6 text-purple-400 mx-1" />
                   
-                  <div className="flex-1">
+                  <div 
+                    className="flex-1 cursor-pointer" 
+                    onClick={() => handleViewContent(inspiration.inspiredItem)}
+                  >
                     {inspiration.inspiredItem.type === 'artwork' ? (
-                      <div className="aspect-square h-16 w-16 rounded overflow-hidden">
+                      <div className="aspect-square h-32 w-full rounded overflow-hidden">
                         <img 
                           src={inspiration.inspiredItem.image_url} 
                           alt="" 
@@ -294,12 +308,34 @@ const Inspired: React.FC = () => {
                         />
                       </div>
                     ) : (
-                      <div className="h-16 w-16 flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
-                        <Music className="h-8 w-8 text-purple-500" />
+                      <div className="h-32 w-full flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
+                        <Music className="h-12 w-12 text-purple-500" />
                       </div>
                     )}
-                    <div className="text-xs mt-1 truncate w-16 text-center">{inspiration.inspiredItem.title}</div>
+                    <div className="text-sm mt-1 font-medium truncate">{inspiration.inspiredItem.title}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      by {profiles[inspiration.inspiredItem.user_id]?.name || 'Artist'}
+                    </div>
                   </div>
+                </div>
+                
+                <div className="flex justify-between mt-2 pt-2 border-t">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => handleViewContent(inspiration.sourceItem)}
+                  >
+                    View Original
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => handleViewContent(inspiration.inspiredItem)}
+                  >
+                    View Inspired
+                  </Button>
                 </div>
               </CardContent>
             </Card>
