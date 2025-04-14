@@ -3,6 +3,7 @@ export interface Profile {
   id: string;
   name: string;
   avatar_url: string | null;
+  background_url?: string | null;
   artist_type?: string;
   bio?: string | null;
   website?: string | null;

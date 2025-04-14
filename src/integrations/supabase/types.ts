@@ -239,6 +239,7 @@ export type Database = {
         Row: {
           artist_type: string
           avatar_url: string | null
+          background_url: string | null
           bio: string | null
           created_at: string | null
           id: string
@@ -249,6 +250,7 @@ export type Database = {
         Insert: {
           artist_type: string
           avatar_url?: string | null
+          background_url?: string | null
           bio?: string | null
           created_at?: string | null
           id: string
@@ -259,6 +261,7 @@ export type Database = {
         Update: {
           artist_type?: string
           avatar_url?: string | null
+          background_url?: string | null
           bio?: string | null
           created_at?: string | null
           id?: string

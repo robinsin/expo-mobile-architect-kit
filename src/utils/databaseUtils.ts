@@ -400,36 +400,36 @@ export const fetchUserStats = async (userId: string): Promise<UserStats> => {
     let totalLikes = 0;
     
     if (contentIds.length > 0) {
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from('likes')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact' })
         .in('content_id', contentIds);
         
-      if (!error) {
-        totalLikes = count || 0;
+      if (!error && data) {
+        totalLikes = data.length;
       }
     }
     
     // Fetch followers count
-    const { count: followersCount, error: followersError } = await supabase
+    const { data: followersData, error: followersError } = await supabase
       .from('follows')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'exact' })
       .eq('followed_id', userId);
       
-    if (followersError) throw followersError;
+    const followersCount = followersData?.length || 0;
     
     // Fetch following count
-    const { count: followingCount, error: followingError } = await supabase
+    const { data: followingData, error: followingError } = await supabase
       .from('follows')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'exact' })
       .eq('follower_id', userId);
       
-    if (followingError) throw followingError;
+    const followingCount = followingData?.length || 0;
     
     return {
       totalLikes,
-      totalFollowers: followersCount || 0,
-      totalFollowing: followingCount || 0
+      totalFollowers: followersCount,
+      totalFollowing: followingCount
     };
   } catch (error: any) {
     console.error('Error fetching user stats:', error);
