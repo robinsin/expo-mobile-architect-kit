@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,8 @@ import {
   fetchUserLikes, 
   fetchUserFollows,
   followUser,
-  likeContent
+  likeContent,
+  fetchMostLikedContent
 } from "@/utils/databaseUtils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -31,6 +33,24 @@ const Search: React.FC = () => {
   const [likedContent, setLikedContent] = useState<Record<string, boolean>>({});
   const [followedUsers, setFollowedUsers] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"search" | "popular">("search");
+  const [popularContent, setPopularContent] = useState<Content[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchUserInteractions = async () => {
+      // Fetch user likes and follows if logged in
+      if (user) {
+        const userLikes = await fetchUserLikes(user.id);
+        setLikedContent(userLikes);
+        
+        const userFollows = await fetchUserFollows(user.id);
+        setFollowedUsers(userFollows);
+      }
+    };
+
+    fetchUserInteractions();
+  }, [user]);
 
   useEffect(() => {
     const loadSearchResults = async () => {
@@ -81,15 +101,6 @@ const Search: React.FC = () => {
           setProfiles(profilesMap);
         }
         
-        // Fetch user likes and follows if logged in
-        if (user) {
-          const userLikes = await fetchUserLikes(user.id);
-          setLikedContent(userLikes);
-          
-          const userFollows = await fetchUserFollows(user.id);
-          setFollowedUsers(userFollows);
-        }
-        
       } catch (error) {
         console.error('Error loading search results:', error);
       } finally {
@@ -107,6 +118,37 @@ const Search: React.FC = () => {
       (searchInput as HTMLInputElement).focus();
     }
   }, []);
+
+  // Load popular content in a separate effect
+  useEffect(() => {
+    const loadPopularContent = async () => {
+      try {
+        if (activeTab === 'popular') {
+          setLoading(true);
+          const popularItems = await fetchMostLikedContent(20);
+          setPopularContent(popularItems);
+          
+          // Collect user IDs from popular content
+          const userIds = new Set<string>();
+          popularItems.forEach(content => {
+            userIds.add(content.user_id);
+          });
+          
+          // Fetch profiles for all creators
+          if (userIds.size > 0) {
+            const profilesMap = await fetchProfiles(Array.from(userIds));
+            setProfiles(prev => ({ ...prev, ...profilesMap }));
+          }
+        }
+      } catch (error) {
+        console.error('Error loading popular content:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadPopularContent();
+  }, [activeTab]);
   
   const handleLike = async (content: Content, event?: React.MouseEvent) => {
     if (event) {
@@ -170,36 +212,6 @@ const Search: React.FC = () => {
       .join('')
       .toUpperCase();
   };
-
-  // Get most liked content IDs for "Popular" tab
-  const { data: likesData } = await supabase
-    .from('likes')
-    .select('content_id, content_type')
-    .count()
-    .order('count', { ascending: false })
-    .limit(20);
-  
-  const popularContentIds = likesData ? likesData.map(item => item.content_id) : [];
-  
-  // Fetch content details for popular content
-  const [popularArtworks, popularMusic] = await Promise.all([
-    supabase
-      .from('artworks')
-      .select('*')
-      .in('id', popularContentIds),
-    supabase
-      .from('music_tracks')
-      .select('*')
-      .in('id', popularContentIds)
-  ]);
-  
-  const popularArtworksData = popularArtworks.data || [];
-  const popularMusicData = popularMusic.data || [];
-  
-  const popularContent: Content[] = [
-    ...popularArtworksData.map(art => ({ ...art, type: 'artwork' as const })),
-    ...popularMusicData.map(track => ({ ...track, type: 'music' as const }))
-  ];
 
   return (
     <div className="px-4 py-6">

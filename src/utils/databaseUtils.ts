@@ -334,8 +334,6 @@ export const updateUserSetting = async <T extends keyof UserSettings>(
   }
 };
 
-// New functions for the requested features
-
 export const fetchContentStats = async (contentId: string): Promise<{ likes: number, comments: number }> => {
   try {
     // Fetch likes count
@@ -441,27 +439,46 @@ export const fetchUserStats = async (userId: string): Promise<UserStats> => {
 
 export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
   try {
-    // Get most liked content IDs
-    const { data: likesData } = await supabase
+    // Get most liked content IDs with counts
+    const { data: likesData, error: likesError } = await supabase
       .from('likes')
       .select('content_id, content_type')
-      .select('content_id, content_type')
-      .count()
-      .order('count', { ascending: false })
-      .limit(limit * 2); // Fetch more than needed in case some content is no longer available
+      .select('content_id, content_type');
       
+    if (likesError) throw likesError;
+    
     if (!likesData || likesData.length === 0) {
       return [];
     }
     
+    // Count likes per content and sort
+    const likesCount: Record<string, number> = {};
+    likesData.forEach(like => {
+      if (likesCount[like.content_id]) {
+        likesCount[like.content_id]++;
+      } else {
+        likesCount[like.content_id] = 1;
+      }
+    });
+    
+    // Convert to array and sort by count
+    const sortedLikes = Object.entries(likesCount)
+      .map(([contentId, count]) => ({
+        contentId,
+        count,
+        contentType: likesData.find(l => l.content_id === contentId)?.content_type || 'artwork'
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit * 2); // Fetch more than needed in case some content is no longer available
+    
     // Separate artwork and music IDs
-    const artworkIds = likesData
-      .filter(item => item.content_type === 'artwork')
-      .map(item => item.content_id);
+    const artworkIds = sortedLikes
+      .filter(item => item.contentType === 'artwork')
+      .map(item => item.contentId);
       
-    const musicIds = likesData
-      .filter(item => item.content_type === 'music')
-      .map(item => item.content_id);
+    const musicIds = sortedLikes
+      .filter(item => item.contentType === 'music')
+      .map(item => item.contentId);
     
     let artworks: any[] = [];
     let musicTracks: any[] = [];
@@ -490,22 +507,21 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
       }
     }
     
-    // Combine and sort by likes
+    // Combine and sort by likes count
     const content = [...artworks, ...musicTracks];
     
-    // Map content to like counts and sort
-    const contentWithRank = content.map(item => {
-      const likeInfo = likesData.find(l => l.content_id === item.id);
-      return {
+    // Sort content by the like counts from earlier
+    const sortedContent = content
+      .map(item => ({
         content: item,
-        likeCount: likeInfo ? parseInt(likeInfo.count) : 0
-      };
-    });
+        likeCount: likesCount[item.id] || 0
+      }))
+      .sort((a, b) => b.likeCount - a.likeCount)
+      .slice(0, limit)
+      .map(item => item.content);
     
-    contentWithRank.sort((a, b) => b.likeCount - a.likeCount);
-    
-    return contentWithRank.slice(0, limit).map(item => item.content);
-  } catch (error: any) {
+    return sortedContent;
+  } catch (error) {
     console.error('Error fetching most liked content:', error);
     return [];
   }
@@ -608,7 +624,13 @@ export const fetchNotifications = async (userId: string): Promise<Notification[]
       
     if (error) throw error;
     
-    return data || [];
+    // Convert string type to NotificationType
+    const typedNotifications: Notification[] = (data || []).map(notification => ({
+      ...notification,
+      type: notification.type as NotificationType
+    }));
+    
+    return typedNotifications;
   } catch (error: any) {
     console.error('Error fetching notifications:', error);
     return [];
