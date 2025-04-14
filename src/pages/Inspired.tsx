@@ -1,11 +1,10 @@
-
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Heart, MessageSquare, Music, UserPlus, GalleryHorizontal, Link2 } from "lucide-react";
+import { Heart, MessageSquare, Music, UserPlus, GalleryHorizontal, Link2, ChevronDown, ChevronUp } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Content, Profile, Inspiration } from "@/types/social";
@@ -14,9 +13,11 @@ import {
   fetchUserLikes, 
   fetchUserFollows,
   followUser,
-  likeContent
+  likeContent,
+  fetchContentStats
 } from "@/utils/databaseUtils";
 import { supabase } from "@/integrations/supabase/client";
+import GridViewToggle from "@/components/GridViewToggle";
 
 const Inspired: React.FC = () => {
   const { user } = useAuth();
@@ -27,6 +28,9 @@ const Inspired: React.FC = () => {
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [likedContent, setLikedContent] = useState<Record<string, boolean>>({});
   const [followedUsers, setFollowedUsers] = useState<Record<string, boolean>>({});
+  const [expandedInspirations, setExpandedInspirations] = useState<Record<string, boolean>>({});
+  const [contentStats, setContentStats] = useState<Record<string, { likes: number, comments: number }>>({});
+  const [gridView, setGridView] = useState<'single' | 'double'>('double');
   const highlightId = searchParams.get('highlight');
 
   useEffect(() => {
@@ -34,7 +38,6 @@ const Inspired: React.FC = () => {
       try {
         setLoading(true);
         
-        // Fetch inspirations
         let query = supabase
           .from('inspirations')
           .select('*, source_id, source_type, inspired_id, inspired_type')
@@ -48,7 +51,6 @@ const Inspired: React.FC = () => {
         const { data: inspirationsData } = await query;
           
         if (inspirationsData) {
-          // Collect all content IDs
           const artworkIds = new Set<string>();
           const musicIds = new Set<string>();
           const userIds = new Set<string>();
@@ -60,19 +62,16 @@ const Inspired: React.FC = () => {
             if (insp.inspired_type === 'music') musicIds.add(insp.inspired_id);
           });
           
-          // Fetch artworks
           const { data: artworksData } = await supabase
             .from('artworks')
             .select('*')
             .in('id', Array.from(artworkIds));
             
-          // Fetch music
           const { data: musicData } = await supabase
             .from('music_tracks')
             .select('*')
             .in('id', Array.from(musicIds));
             
-          // Create maps for lookups
           const artworksMap: Record<string, any> = {};
           const musicMap: Record<string, any> = {};
           
@@ -90,7 +89,6 @@ const Inspired: React.FC = () => {
             });
           }
           
-          // Enhance inspirations with content data
           const enhancedInspirations = inspirationsData.map(insp => {
             const sourceItem = insp.source_type === 'artwork' 
               ? artworksMap[insp.source_id] 
@@ -109,20 +107,17 @@ const Inspired: React.FC = () => {
           
           setInspirations(enhancedInspirations);
           
-          // Collect user IDs from content
           enhancedInspirations.forEach(inspiration => {
             userIds.add(inspiration.sourceItem.user_id);
             userIds.add(inspiration.inspiredItem.user_id);
           });
           
-          // Fetch profiles for all creators
           if (userIds.size > 0) {
             const profilesMap = await fetchProfiles(Array.from(userIds));
             setProfiles(profilesMap);
           }
         }
         
-        // Fetch user likes and follows if logged in
         if (user) {
           const userLikes = await fetchUserLikes(user.id);
           setLikedContent(userLikes);
@@ -141,6 +136,46 @@ const Inspired: React.FC = () => {
     loadInspirations();
   }, [user, highlightId]);
   
+  useEffect(() => {
+    if (inspirations.length > 0) {
+      const expanded: Record<string, boolean> = {};
+      inspirations.forEach(insp => {
+        expanded[insp.id] = false;
+      });
+      setExpandedInspirations(expanded);
+    }
+  }, [inspirations]);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (inspirations.length === 0) return;
+      
+      const statsMap: Record<string, { likes: number, comments: number }> = {};
+      
+      for (const insp of inspirations) {
+        if (insp.sourceItem) {
+          const sourceStats = await fetchContentStats(insp.sourceItem.id);
+          statsMap[insp.sourceItem.id] = sourceStats;
+        }
+        if (insp.inspiredItem) {
+          const inspiredStats = await fetchContentStats(insp.inspiredItem.id);
+          statsMap[insp.inspiredItem.id] = inspiredStats;
+        }
+      }
+      
+      setContentStats(statsMap);
+    };
+    
+    fetchStats();
+  }, [inspirations]);
+
+  const toggleInspiration = (id: string) => {
+    setExpandedInspirations(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
   const handleLike = async (content: Content, event?: React.MouseEvent) => {
     if (event) {
       event.stopPropagation();
@@ -180,11 +215,7 @@ const Inspired: React.FC = () => {
   };
   
   const handleViewContent = (content: Content) => {
-    if (content.type === 'artwork') {
-      navigate(`/artwork/${content.id}`);
-    } else {
-      navigate(`/search?highlight=${content.id}`);
-    }
+    navigate(`/artwork/${content.id}`);
   };
   
   const handleViewArtistProfile = (userId: string, event?: React.MouseEvent) => {
@@ -232,7 +263,10 @@ const Inspired: React.FC = () => {
         </div>
       )}
       
-      <h2 className="text-xl font-semibold mb-4">Latest Inspiration Stories</h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-semibold">Latest Inspiration Stories</h2>
+        <GridViewToggle gridView={gridView} setGridView={setGridView} />
+      </div>
       
       {loading ? (
         <div className="space-y-4">
@@ -250,93 +284,164 @@ const Inspired: React.FC = () => {
           ))}
         </div>
       ) : inspirations.length > 0 ? (
-        <div className="space-y-4">
+        <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
           {inspirations.map((inspiration) => (
             <Card 
               key={inspiration.id} 
               className="overflow-hidden hover:shadow-md transition-shadow"
             >
               <CardContent className="p-3">
-                <div className="flex flex-col md:flex-row items-center gap-3 mb-3">
+                <div className="flex flex-col items-center gap-3 mb-3">
                   <div className="flex gap-2 items-center">
                     <Heart className="h-4 w-4 text-red-400" />
                     <span className="text-xs">Inspiration Story</span>
                   </div>
-                  <div className="flex-1 text-center md:text-left">
+                  <div className="text-center">
                     <span className="text-xs text-muted-foreground">
                       {new Date(inspiration.created_at).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-center gap-2">
-                  <div 
-                    className="flex-1 cursor-pointer" 
-                    onClick={() => handleViewContent(inspiration.sourceItem)}
-                  >
-                    {inspiration.sourceItem.type === 'artwork' ? (
-                      <div className="aspect-square h-32 w-full rounded overflow-hidden">
-                        <img 
-                          src={inspiration.sourceItem.image_url} 
-                          alt="" 
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="h-32 w-full flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
-                        <Music className="h-12 w-12 text-purple-500" />
-                      </div>
-                    )}
-                    <div className="text-sm mt-1 font-medium truncate">{inspiration.sourceItem.title}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      by {profiles[inspiration.sourceItem.user_id]?.name || 'Artist'}
+                <div 
+                  className="w-full cursor-pointer" 
+                  onClick={() => handleViewContent(inspiration.inspiredItem)}
+                >
+                  {inspiration.inspiredItem.type === 'artwork' ? (
+                    <div className="aspect-square w-full rounded overflow-hidden">
+                      <img 
+                        src={inspiration.inspiredItem.image_url} 
+                        alt="" 
+                        className="h-full w-full object-cover"
+                      />
                     </div>
+                  ) : (
+                    <div className="h-32 w-full flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
+                      <Music className="h-12 w-12 text-purple-500" />
+                    </div>
+                  )}
+                  <div className="text-sm mt-2 font-medium truncate">{inspiration.inspiredItem.title}</div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    by {profiles[inspiration.inspiredItem.user_id]?.name || 'Artist'}
                   </div>
                   
-                  <Link2 className="h-6 w-6 text-purple-400 mx-1" />
-                  
-                  <div 
-                    className="flex-1 cursor-pointer" 
-                    onClick={() => handleViewContent(inspiration.inspiredItem)}
-                  >
-                    {inspiration.inspiredItem.type === 'artwork' ? (
-                      <div className="aspect-square h-32 w-full rounded overflow-hidden">
-                        <img 
-                          src={inspiration.inspiredItem.image_url} 
-                          alt="" 
-                          className="h-full w-full object-cover"
+                  <div className="flex justify-between mt-2">
+                    <div className="flex items-center">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLike(inspiration.inspiredItem);
+                        }}
+                      >
+                        <Heart 
+                          className={`h-4 w-4 ${likedContent[inspiration.inspiredItem.id] ? "fill-red-500 text-red-500" : ""}`} 
                         />
-                      </div>
-                    ) : (
-                      <div className="h-32 w-full flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
-                        <Music className="h-12 w-12 text-purple-500" />
-                      </div>
-                    )}
-                    <div className="text-sm mt-1 font-medium truncate">{inspiration.inspiredItem.title}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      by {profiles[inspiration.inspiredItem.user_id]?.name || 'Artist'}
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[inspiration.inspiredItem.id]?.likes || 0}</span>
+                      
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 ml-1 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/artwork/${inspiration.inspiredItem.id}`);
+                        }}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[inspiration.inspiredItem.id]?.comments || 0}</span>
                     </div>
+                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs flex items-center gap-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleInspiration(inspiration.id);
+                      }}
+                    >
+                      <span>Inspired by</span>
+                      {expandedInspirations[inspiration.id] ? (
+                        <ChevronUp className="h-3 w-3" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3" />
+                      )}
+                    </Button>
                   </div>
                 </div>
                 
-                <div className="flex justify-between mt-2 pt-2 border-t">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-xs"
-                    onClick={() => handleViewContent(inspiration.sourceItem)}
-                  >
-                    View Original
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-xs"
-                    onClick={() => handleViewContent(inspiration.inspiredItem)}
-                  >
-                    View Inspired
-                  </Button>
-                </div>
+                {expandedInspirations[inspiration.id] && (
+                  <div className="mt-3 pt-3 border-t">
+                    <div className="flex items-center justify-center mb-2">
+                      <div className="h-px bg-gray-200 dark:bg-gray-700 flex-1" />
+                      <span className="px-2 text-xs text-muted-foreground">Inspired by</span>
+                      <div className="h-px bg-gray-200 dark:bg-gray-700 flex-1" />
+                    </div>
+                    
+                    <div 
+                      className="cursor-pointer" 
+                      onClick={() => handleViewContent(inspiration.sourceItem)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {inspiration.sourceItem.type === 'artwork' ? (
+                          <div className="aspect-square h-20 w-20 rounded overflow-hidden">
+                            <img 
+                              src={inspiration.sourceItem.image_url} 
+                              alt="" 
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-20 w-20 flex items-center justify-center bg-purple-100 dark:bg-purple-900 rounded">
+                            <Music className="h-8 w-8 text-purple-500" />
+                          </div>
+                        )}
+                        
+                        <div className="flex-1">
+                          <div className="text-sm font-medium truncate">{inspiration.sourceItem.title}</div>
+                          <div className="text-xs text-muted-foreground">
+                            by {profiles[inspiration.sourceItem.user_id]?.name || 'Artist'}
+                          </div>
+                          
+                          <div className="flex items-center mt-1">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLike(inspiration.sourceItem);
+                              }}
+                            >
+                              <Heart 
+                                className={`h-3 w-3 ${likedContent[inspiration.sourceItem.id] ? "fill-red-500 text-red-500" : ""}`} 
+                              />
+                            </Button>
+                            <span className="text-xs ml-1">{contentStats[inspiration.sourceItem.id]?.likes || 0}</span>
+                            
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-6 w-6 ml-1 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/artwork/${inspiration.sourceItem.id}`);
+                              }}
+                            >
+                              <MessageSquare className="h-3 w-3" />
+                            </Button>
+                            <span className="text-xs ml-1">{contentStats[inspiration.sourceItem.id]?.comments || 0}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

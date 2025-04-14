@@ -1,4 +1,3 @@
-
 export interface Profile {
   id: string;
   name: string;
@@ -7,6 +6,8 @@ export interface Profile {
   artist_type?: string;
   bio?: string | null;
   website?: string | null;
+  likes_credit?: number;
+  likes_points?: number;
 }
 
 export interface Comment {

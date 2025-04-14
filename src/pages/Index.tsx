@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -16,9 +15,11 @@ import {
   fetchUserLikes, 
   fetchUserFollows,
   followUser,
-  likeContent
+  likeContent,
+  fetchContentStats
 } from "@/utils/databaseUtils";
 import { supabase } from "@/integrations/supabase/client";
+import GridViewToggle from "@/components/GridViewToggle";
 
 const Index: React.FC = () => {
   const { user } = useAuth();
@@ -30,6 +31,8 @@ const Index: React.FC = () => {
   const [likedContent, setLikedContent] = useState<Record<string, boolean>>({});
   const [followedUsers, setFollowedUsers] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"trending" | "inspirations">("trending");
+  const [gridView, setGridView] = useState<'single' | 'double'>('double');
+  const [contentStats, setContentStats] = useState<Record<string, { likes: number, comments: number }>>({});
 
   useEffect(() => {
     const loadHomeContent = async () => {
@@ -140,6 +143,24 @@ const Index: React.FC = () => {
     loadHomeContent();
   }, [user]);
   
+  useEffect(() => {
+    // Fetch statistics for all content
+    const fetchStats = async () => {
+      if (popularContent.length === 0) return;
+      
+      const statsMap: Record<string, { likes: number, comments: number }> = {};
+      
+      for (const content of popularContent) {
+        const stats = await fetchContentStats(content.id);
+        statsMap[content.id] = stats;
+      }
+      
+      setContentStats(statsMap);
+    };
+    
+    fetchStats();
+  }, [popularContent]);
+  
   const handleLike = async (content: Content, event?: React.MouseEvent) => {
     if (event) {
       event.stopPropagation();
@@ -238,10 +259,13 @@ const Index: React.FC = () => {
         </TabsList>
         
         <TabsContent value="trending">
-          <h2 className="text-xl font-semibold mb-4">Most Liked Creations</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Most Liked Creations</h2>
+            <GridViewToggle gridView={gridView} setGridView={setGridView} />
+          </div>
           
           {loading ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
               {Array(4).fill(0).map((_, i) => (
                 <Card key={i} className="overflow-hidden">
                   <Skeleton className="h-40" />
@@ -253,12 +277,12 @@ const Index: React.FC = () => {
               ))}
             </div>
           ) : popularContent.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
               {popularContent.map((content) => (
                 <Card 
                   key={content.id} 
                   className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => handleViewContent(content)}
+                  onClick={() => navigate(`/artwork/${content.id}`)}
                 >
                   <div className="aspect-square relative">
                     {content.type === 'artwork' && 'image_url' in content ? (
@@ -283,16 +307,32 @@ const Index: React.FC = () => {
                     </div>
                   </CardContent>
                   <CardFooter className="p-2 pt-0 flex justify-between">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8"
-                      onClick={(e) => handleLike(content, e)}
-                    >
-                      <Heart 
-                        className={`h-4 w-4 ${likedContent[content.id] ? "fill-red-500 text-red-500" : ""}`} 
-                      />
-                    </Button>
+                    <div className="flex items-center">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={(e) => handleLike(content, e)}
+                      >
+                        <Heart 
+                          className={`h-4 w-4 ${likedContent[content.id] ? "fill-red-500 text-red-500" : ""}`} 
+                        />
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[content.id]?.likes || 0}</span>
+                      
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 ml-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/artwork/${content.id}`);
+                        }}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[content.id]?.comments || 0}</span>
+                    </div>
                     <Button 
                       variant="ghost" 
                       size="icon" 

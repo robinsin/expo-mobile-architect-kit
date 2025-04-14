@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,9 +16,11 @@ import {
   fetchUserFollows,
   followUser,
   likeContent,
-  fetchMostLikedContent
+  fetchMostLikedContent,
+  fetchContentStats
 } from "@/utils/databaseUtils";
 import { supabase } from "@/integrations/supabase/client";
+import GridViewToggle from "@/components/GridViewToggle";
 
 const Search: React.FC = () => {
   const { user } = useAuth();
@@ -34,12 +35,13 @@ const Search: React.FC = () => {
   const [followedUsers, setFollowedUsers] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"search" | "popular">("search");
   const [popularContent, setPopularContent] = useState<Content[]>([]);
+  const [gridView, setGridView] = useState<'single' | 'double'>('double');
+  const [contentStats, setContentStats] = useState<Record<string, { likes: number, comments: number }>>({});
 
   useEffect(() => {
     if (!user) return;
 
     const fetchUserInteractions = async () => {
-      // Fetch user likes and follows if logged in
       if (user) {
         const userLikes = await fetchUserLikes(user.id);
         setLikedContent(userLikes);
@@ -57,7 +59,6 @@ const Search: React.FC = () => {
       try {
         setLoading(true);
         
-        // Fetch search results based on search term
         let artworksQuery = supabase
           .from('artworks')
           .select('*')
@@ -68,7 +69,6 @@ const Search: React.FC = () => {
           .select('*')
           .ilike('title', `%${searchTerm}%`);
           
-        // If there's a highlight ID, prioritize that content
         if (highlightId) {
           artworksQuery = artworksQuery.or(`id.eq.${highlightId}`);
           musicQuery = musicQuery.or(`id.eq.${highlightId}`);
@@ -82,20 +82,17 @@ const Search: React.FC = () => {
         if (artworksResult.error) throw artworksResult.error;
         if (musicResult.error) throw musicResult.error;
         
-        // Combine and type the results
         const artworks: Content[] = (artworksResult.data || []).map(art => ({ ...art, type: 'artwork' as const }));
         const music: Content[] = (musicResult.data || []).map(track => ({ ...track, type: 'music' as const }));
         
         const combinedResults = [...artworks, ...music];
         setSearchResults(combinedResults);
         
-        // Collect user IDs from search results
         const userIds = new Set<string>();
         combinedResults.forEach(content => {
           userIds.add(content.user_id);
         });
         
-        // Fetch profiles for all creators
         if (userIds.size > 0) {
           const profilesMap = await fetchProfiles(Array.from(userIds));
           setProfiles(profilesMap);
@@ -112,15 +109,6 @@ const Search: React.FC = () => {
   }, [searchTerm, highlightId, user]);
   
   useEffect(() => {
-    // Set focus on the search input when the component mounts
-    const searchInput = document.getElementById("search-input");
-    if (searchInput) {
-      (searchInput as HTMLInputElement).focus();
-    }
-  }, []);
-
-  // Load popular content in a separate effect
-  useEffect(() => {
     const loadPopularContent = async () => {
       try {
         if (activeTab === 'popular') {
@@ -128,13 +116,11 @@ const Search: React.FC = () => {
           const popularItems = await fetchMostLikedContent(20);
           setPopularContent(popularItems);
           
-          // Collect user IDs from popular content
           const userIds = new Set<string>();
           popularItems.forEach(content => {
             userIds.add(content.user_id);
           });
           
-          // Fetch profiles for all creators
           if (userIds.size > 0) {
             const profilesMap = await fetchProfiles(Array.from(userIds));
             setProfiles(prev => ({ ...prev, ...profilesMap }));
@@ -150,6 +136,31 @@ const Search: React.FC = () => {
     loadPopularContent();
   }, [activeTab]);
   
+  useEffect(() => {
+    const fetchStats = async () => {
+      const allContent = [...searchResults, ...popularContent];
+      if (allContent.length === 0) return;
+      
+      const statsMap: Record<string, { likes: number, comments: number }> = {};
+      
+      for (const content of allContent) {
+        const stats = await fetchContentStats(content.id);
+        statsMap[content.id] = stats;
+      }
+      
+      setContentStats(statsMap);
+    };
+    
+    fetchStats();
+  }, [searchResults, popularContent]);
+
+  useEffect(() => {
+    const searchInput = document.getElementById("search-input");
+    if (searchInput) {
+      (searchInput as HTMLInputElement).focus();
+    }
+  }, []);
+
   const handleLike = async (content: Content, event?: React.MouseEvent) => {
     if (event) {
       event.stopPropagation();
@@ -189,7 +200,7 @@ const Search: React.FC = () => {
   };
   
   const handleViewContent = (content: Content) => {
-    navigate(`/search?highlight=${content.id}`);
+    navigate(`/artwork/${content.id}`);
   };
   
   const handleViewArtistProfile = (userId: string, event?: React.MouseEvent) => {
@@ -239,10 +250,13 @@ const Search: React.FC = () => {
         </TabsList>
         
         <TabsContent value="search">
-          <h2 className="text-xl font-semibold mb-4">Search Results</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Search Results</h2>
+            <GridViewToggle gridView={gridView} setGridView={setGridView} />
+          </div>
           
           {loading ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
               {Array(4).fill(0).map((_, i) => (
                 <Card key={i} className="overflow-hidden">
                   <Skeleton className="h-40" />
@@ -254,7 +268,7 @@ const Search: React.FC = () => {
               ))}
             </div>
           ) : searchResults.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
               {searchResults.map((content) => (
                 <Card 
                   key={content.id} 
@@ -284,16 +298,32 @@ const Search: React.FC = () => {
                     </div>
                   </CardContent>
                   <CardFooter className="p-2 pt-0 flex justify-between">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8"
-                      onClick={(e) => handleLike(content, e)}
-                    >
-                      <Heart 
-                        className={`h-4 w-4 ${likedContent[content.id] ? "fill-red-500 text-red-500" : ""}`} 
-                      />
-                    </Button>
+                    <div className="flex items-center">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={(e) => handleLike(content, e)}
+                      >
+                        <Heart 
+                          className={`h-4 w-4 ${likedContent[content.id] ? "fill-red-500 text-red-500" : ""}`} 
+                        />
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[content.id]?.likes || 0}</span>
+                      
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 ml-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/artwork/${content.id}`);
+                        }}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[content.id]?.comments || 0}</span>
+                    </div>
                     <Button 
                       variant="ghost" 
                       size="icon" 
@@ -317,10 +347,13 @@ const Search: React.FC = () => {
         </TabsContent>
         
         <TabsContent value="popular">
-          <h2 className="text-xl font-semibold mb-4">Popular Content</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Popular Content</h2>
+            <GridViewToggle gridView={gridView} setGridView={setGridView} />
+          </div>
           
           {loading ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
               {Array(4).fill(0).map((_, i) => (
                 <Card key={i} className="overflow-hidden">
                   <Skeleton className="h-40" />
@@ -332,7 +365,7 @@ const Search: React.FC = () => {
               ))}
             </div>
           ) : popularContent.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
               {popularContent.map((content) => (
                 <Card 
                   key={content.id} 
@@ -362,16 +395,32 @@ const Search: React.FC = () => {
                     </div>
                   </CardContent>
                   <CardFooter className="p-2 pt-0 flex justify-between">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8"
-                      onClick={(e) => handleLike(content, e)}
-                    >
-                      <Heart 
-                        className={`h-4 w-4 ${likedContent[content.id] ? "fill-red-500 text-red-500" : ""}`} 
-                      />
-                    </Button>
+                    <div className="flex items-center">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={(e) => handleLike(content, e)}
+                      >
+                        <Heart 
+                          className={`h-4 w-4 ${likedContent[content.id] ? "fill-red-500 text-red-500" : ""}`} 
+                        />
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[content.id]?.likes || 0}</span>
+                      
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 ml-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/artwork/${content.id}`);
+                        }}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                      </Button>
+                      <span className="text-xs ml-1">{contentStats[content.id]?.comments || 0}</span>
+                    </div>
                     <Button 
                       variant="ghost" 
                       size="icon" 

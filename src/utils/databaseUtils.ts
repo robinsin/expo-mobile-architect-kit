@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy, Notification, NotificationType, UserStats, FollowConnection } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
@@ -101,7 +102,27 @@ export const likeContent = async (
   isLiked: boolean
 ): Promise<boolean> => {
   try {
+    // First, check if user has likes credit
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('likes_credit')
+      .eq('id', userId)
+      .single();
+      
+    if (!userProfile) {
+      toast({
+        title: "Error",
+        description: "User profile not found.",
+        variant: "destructive",
+      });
+      return isLiked;
+    }
+    
+    // Default to 5 if likes_credit is null
+    const likesCredit = userProfile.likes_credit ?? 5;
+    
     if (isLiked) {
+      // If already liked, remove the like
       const { error } = await supabase
         .from('likes')
         .delete()
@@ -110,13 +131,43 @@ export const likeContent = async (
         
       if (error) throw error;
       
+      // Increase user's likes credit by 1
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ likes_credit: likesCredit + 1 })
+        .eq('id', userId);
+        
+      if (updateError) throw updateError;
+      
+      // Decrease content owner's likes points by 1
+      const { error: ownerUpdateError } = await supabase
+        .from('profiles')
+        .update({ 
+          likes_points: supabase.sql`likes_points - 1` 
+        })
+        .eq('id', content.user_id);
+        
+      if (ownerUpdateError) throw ownerUpdateError;
+      
       toast({
         title: "Like removed",
+        description: "You've received 1 like credit back.",
         variant: "default",
       });
       
       return false;
     } else {
+      // Check if user has enough credits
+      if (likesCredit <= 0) {
+        toast({
+          title: "Not enough like credits",
+          description: "You need at least 1 like credit to like content.",
+          variant: "destructive",
+        });
+        return isLiked;
+      }
+      
+      // Add a new like
       const { error } = await supabase
         .from('likes')
         .insert({
@@ -127,6 +178,24 @@ export const likeContent = async (
         
       if (error) throw error;
       
+      // Decrease user's likes credit
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ likes_credit: likesCredit - 1 })
+        .eq('id', userId);
+        
+      if (updateError) throw updateError;
+      
+      // Increase content owner's likes points by 1
+      const { error: ownerUpdateError } = await supabase
+        .from('profiles')
+        .update({ 
+          likes_points: supabase.sql`COALESCE(likes_points, 0) + 1` 
+        })
+        .eq('id', content.user_id);
+        
+      if (ownerUpdateError) throw ownerUpdateError;
+      
       // Create notification for the content owner if not the same user
       if (userId !== content.user_id) {
         createNotification(content.user_id, userId, 'like', content.id, content.type);
@@ -134,6 +203,7 @@ export const likeContent = async (
       
       toast({
         title: "Content liked!",
+        description: "You used 1 like credit.",
         variant: "default",
       });
       
