@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
@@ -22,7 +23,7 @@ const Settings: React.FC = () => {
   const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettingsType>({
     user_id: "",
-    dark_mode: false,
+    dark_mode: true, // Set default to true
     push_notifications: false,
     email_notifications: false,
     privacy_mode: "public"
@@ -39,9 +40,13 @@ const Settings: React.FC = () => {
   useEffect(() => {
     const getInitialTheme = () => {
       if (typeof window !== 'undefined') {
-        return document.documentElement.classList.contains('dark');
+        // Check if dark mode is already set, if not default to true
+        if (!document.documentElement.classList.contains('dark')) {
+          document.documentElement.classList.add('dark');
+        }
+        return true; // Default to dark mode
       }
-      return false;
+      return true; // Default to dark mode
     };
     
     const fetchSettings = async () => {
@@ -63,25 +68,38 @@ const Settings: React.FC = () => {
           // Ensure privacy_mode is one of the allowed values
           const privacyMode = validatePrivacyMode(data.privacy_mode);
           
+          // Ensure dark_mode is true by default if it's not set
+          const darkMode = data.dark_mode === null ? true : data.dark_mode;
+          
           setSettings({
             id: data.id,
             user_id: data.user_id,
-            dark_mode: data.dark_mode || getInitialTheme(),
+            dark_mode: darkMode,
             push_notifications: data.push_notifications || false,
             email_notifications: data.email_notifications || false,
             privacy_mode: privacyMode
           });
           
+          // Apply the theme setting
+          if (darkMode) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          
           privacyForm.setValue('privacy_mode', privacyMode);
         } else {
-          // Create default settings
+          // Create default settings with dark mode enabled
           const defaultSettings: UserSettingsType = {
             user_id: user.id,
-            dark_mode: getInitialTheme(),
+            dark_mode: true, // Default to dark mode
             push_notifications: false,
             email_notifications: false,
             privacy_mode: "public"
           };
+          
+          // Apply dark mode by default
+          document.documentElement.classList.add('dark');
           
           const { data: newSettings, error: insertError } = await supabase
             .from('user_settings')

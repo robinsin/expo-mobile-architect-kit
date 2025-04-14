@@ -340,6 +340,36 @@ export const saveInspirationSource = async (contentId: string, contentTitle: str
   }
 };
 
+export const createInspiration = async (
+  sourceId: string, 
+  sourceType: ContentType,
+  inspiredId: string,
+  inspiredType: ContentType
+) => {
+  try {
+    const { data, error } = await supabase
+      .from('inspirations')
+      .insert({
+        source_id: sourceId,
+        source_type: sourceType,
+        inspired_id: inspiredId,
+        inspired_type: inspiredType
+      })
+      .select()
+      .single();
+      
+    if (error) throw error;
+    
+    return { success: true, data };
+  } catch (error: any) {
+    console.error('Error creating inspiration:', error);
+    return { 
+      success: false, 
+      error: error.message || 'Error creating inspiration connection' 
+    };
+  }
+};
+
 export const fetchUserSettings = async (userId: string): Promise<UserSettings | null> => {
   try {
     const { data, error } = await supabase

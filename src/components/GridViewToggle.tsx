@@ -1,14 +1,24 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Grid2X2, LayoutList } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface GridViewToggleProps {
-  gridView: string;
+  gridView: 'single' | 'double';
   setGridView: (view: 'single' | 'double') => void;
 }
 
 const GridViewToggle: React.FC<GridViewToggleProps> = ({ gridView, setGridView }) => {
+  const isMobile = useIsMobile();
+  
+  // Set default to single view on mobile
+  useEffect(() => {
+    if (isMobile && gridView !== 'single') {
+      setGridView('single');
+    }
+  }, [isMobile, gridView, setGridView]);
+  
   return (
     <div className="flex justify-end mb-4">
       <div className="border rounded-md flex overflow-hidden">

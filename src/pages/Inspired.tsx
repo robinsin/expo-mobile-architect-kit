@@ -30,7 +30,7 @@ const Inspired: React.FC = () => {
   const [followedUsers, setFollowedUsers] = useState<Record<string, boolean>>({});
   const [expandedInspirations, setExpandedInspirations] = useState<Record<string, boolean>>({});
   const [contentStats, setContentStats] = useState<Record<string, { likes: number, comments: number }>>({});
-  const [gridView, setGridView] = useState<'single' | 'double'>('double');
+  const [gridView, setGridView] = useState<'single' | 'double'>('single');
   const highlightId = searchParams.get('highlight');
 
   useEffect(() => {
@@ -284,11 +284,11 @@ const Inspired: React.FC = () => {
           ))}
         </div>
       ) : inspirations.length > 0 ? (
-        <div className={`grid ${gridView === 'double' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+        <div className={`grid ${gridView === 'double' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'} gap-4`}>
           {inspirations.map((inspiration) => (
             <Card 
               key={inspiration.id} 
-              className="overflow-hidden hover:shadow-md transition-shadow"
+              className="overflow-hidden hover:shadow-md transition-shadow w-full"
             >
               <CardContent className="p-3">
                 <div className="flex flex-col items-center gap-3 mb-3">
