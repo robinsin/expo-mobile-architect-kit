@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy, Notification, NotificationType, UserStats, FollowConnection } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
@@ -105,7 +104,7 @@ export const likeContent = async (
     // First, check if user has likes credit
     const { data: userProfile } = await supabase
       .from('profiles')
-      .select('likes_credit')
+      .select('*')
       .eq('id', userId)
       .single();
       
@@ -134,20 +133,15 @@ export const likeContent = async (
       // Increase user's likes credit by 1
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ likes_credit: likesCredit + 1 })
+        .update({ 
+          likes_credit: likesCredit + 1 
+        })
         .eq('id', userId);
         
       if (updateError) throw updateError;
       
       // Decrease content owner's likes points by 1
-      const { error: ownerUpdateError } = await supabase
-        .from('profiles')
-        .update({ 
-          likes_points: supabase.sql`likes_points - 1` 
-        })
-        .eq('id', content.user_id);
-        
-      if (ownerUpdateError) throw ownerUpdateError;
+      await supabase.rpc('decrement_likes_points', { user_id: content.user_id });
       
       toast({
         title: "Like removed",
@@ -181,20 +175,15 @@ export const likeContent = async (
       // Decrease user's likes credit
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ likes_credit: likesCredit - 1 })
+        .update({ 
+          likes_credit: likesCredit - 1 
+        })
         .eq('id', userId);
         
       if (updateError) throw updateError;
       
       // Increase content owner's likes points by 1
-      const { error: ownerUpdateError } = await supabase
-        .from('profiles')
-        .update({ 
-          likes_points: supabase.sql`COALESCE(likes_points, 0) + 1` 
-        })
-        .eq('id', content.user_id);
-        
-      if (ownerUpdateError) throw ownerUpdateError;
+      await supabase.rpc('increment_likes_points', { user_id: content.user_id });
       
       // Create notification for the content owner if not the same user
       if (userId !== content.user_id) {
