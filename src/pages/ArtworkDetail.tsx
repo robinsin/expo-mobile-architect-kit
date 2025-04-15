@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -68,13 +67,23 @@ const ArtworkDetail: React.FC = () => {
             
           if (musicError) throw new Error("Content not found");
           
-          setArtwork({ ...musicData, type: "music" });
+          setArtwork({ 
+            ...musicData, 
+            type: "music",
+            audio_url: musicData.audio_url,
+            image_url: undefined
+          } as Content);
           
           // Fetch creator profile
           const creatorProfile = await fetchProfiles([musicData.user_id]);
           setCreator(creatorProfile[musicData.user_id] || null);
         } else {
-          setArtwork({ ...artworkData, type: "artwork" });
+          setArtwork({ 
+            ...artworkData, 
+            type: "artwork",
+            image_url: artworkData.image_url,
+            audio_url: undefined
+          } as Content);
           
           // Fetch creator profile
           const creatorProfile = await fetchProfiles([artworkData.user_id]);
@@ -297,7 +306,7 @@ const ArtworkDetail: React.FC = () => {
       
       {/* Artwork Image or Music Player */}
       <div className="w-full">
-        {artwork.type === "artwork" ? (
+        {artwork.type === "artwork" && artwork.image_url ? (
           <img 
             src={artwork.image_url} 
             alt={artwork.title}

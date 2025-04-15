@@ -1,12 +1,18 @@
+
 export type Content = {
   id: string;
   user_id: string;
   title: string;
   description: string;
-  image_url: string;
-  audio_url: string;
   created_at: string;
+  updated_at?: string;
   type: ContentType;
+  // Optional fields that may exist depending on content type
+  image_url?: string;
+  audio_url?: string;
+  genre?: string;
+  tags?: string[];
+  duration?: number;
 };
 
 export type ContentType = 'artwork' | 'music';
@@ -18,6 +24,12 @@ export type Inspiration = {
   inspired_id: string;
   inspired_type: ContentType;
   created_at: string;
+};
+
+export type InspiredBy = {
+  id: string;
+  title: string;
+  type: ContentType;
 };
 
 export type UserSettings = {
@@ -45,4 +57,54 @@ export type Profile = {
   updated_at: string;
   likes_credit: number;
   likes_points: number;
+};
+
+export type Like = {
+  id: string;
+  user_id: string;
+  content_id: string;
+  content_type: ContentType;
+  created_at: string;
+};
+
+export type Comment = {
+  id: string;
+  user_id: string;
+  content_id: string;
+  content_type: string;
+  content: string;
+  created_at: string;
+  user_profile?: Profile;
+};
+
+export type Follow = {
+  id: string;
+  follower_id: string;
+  followed_id: string;
+  created_at: string;
+};
+
+export type FollowConnection = {
+  id: string;
+  profile: Profile;
+  created_at: string;
+};
+
+export type NotificationType = 'like' | 'comment' | 'follow';
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  actor_id: string;
+  type: NotificationType;
+  content_id?: string;
+  content_type?: string;
+  read: boolean;
+  created_at: string;
+};
+
+export type UserStats = {
+  totalLikes: number;
+  totalFollowers: number;
+  totalFollowing: number;
 };

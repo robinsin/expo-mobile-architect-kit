@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -54,7 +53,7 @@ const Profile: React.FC = () => {
           
         if (profileError) throw profileError;
         
-        setProfile(profileData);
+        setProfile(profileData as ProfileType);
         setLikesCredit(profileData.likes_credit ?? 5);
         setLikesPoints(profileData.likes_points ?? 0);
         
@@ -77,15 +76,19 @@ const Profile: React.FC = () => {
         
         const artworks = (artworksResponse.data || []).map(artwork => ({
           ...artwork,
-          type: 'artwork' as const
+          type: 'artwork' as const,
+          image_url: artwork.image_url,
+          audio_url: undefined
         }));
         
         const musicTracks = (musicResponse.data || []).map(track => ({
           ...track,
-          type: 'music' as const
+          type: 'music' as const,
+          audio_url: track.audio_url,
+          image_url: undefined
         }));
         
-        setContent([...artworks, ...musicTracks]);
+        setContent([...artworks, ...musicTracks] as Content[]);
         
       } catch (error: any) {
         toast({
@@ -271,7 +274,7 @@ const Profile: React.FC = () => {
                     >
                       <div className="aspect-square">
                         <img 
-                          src={(artwork as any).image_url} 
+                          src={artwork.image_url} 
                           alt={artwork.title}
                           className="w-full h-full object-cover"
                         />
@@ -367,7 +370,7 @@ const Profile: React.FC = () => {
                       {/* Audio Preview */}
                       <div className="px-3 pb-3">
                         <audio 
-                          src={(track as any).audio_url} 
+                          src={track.audio_url} 
                           controls 
                           className="w-full h-8"
                         />

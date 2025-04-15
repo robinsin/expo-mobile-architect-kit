@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,21 +41,17 @@ const ArtistProfile: React.FC = () => {
     const loadProfile = async () => {
       setIsLoading(true);
       try {
-        // Load profile
         const profileData = await fetchUserProfile(userId);
         setProfile(profileData);
         
-        // Load stats
         const statsData = await fetchUserStats(userId);
         setStats(statsData);
         
-        // Check if current user is following this artist
         if (user) {
           const userFollows = await fetchUserFollows(user.id);
           setIsFollowing(!!userFollows[userId]);
         }
         
-        // Fetch artist's content
         const { data: artworksData, error: artworksError } = await supabase
           .from('artworks')
           .select('*')
@@ -73,13 +68,23 @@ const ArtistProfile: React.FC = () => {
           
         if (musicError) throw musicError;
         
-        // Combine content
-        const artworksWithType = artworksData?.map(art => ({ ...art, type: 'artwork' as const })) || [];
-        const musicWithType = musicData?.map(track => ({ ...track, type: 'music' as const })) || [];
+        const artworksWithType = artworksData?.map(art => ({ 
+          ...art, 
+          type: 'artwork' as const,
+          image_url: art.image_url,
+          audio_url: undefined
+        })) || [];
+        
+        const musicWithType = musicData?.map(track => ({ 
+          ...track, 
+          type: 'music' as const,
+          audio_url: track.audio_url,
+          image_url: undefined
+        })) || [];
         
         setArtworks([...artworksWithType, ...musicWithType].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ));
+        ) as Content[]);
         
       } catch (error: any) {
         toast({
@@ -110,7 +115,6 @@ const ArtistProfile: React.FC = () => {
     const result = await followUser(user.id, profile.id, isFollowing);
     setIsFollowing(result);
     
-    // Update follower count
     setStats(prev => ({
       ...prev,
       totalFollowers: result ? prev.totalFollowers + 1 : prev.totalFollowers - 1
@@ -150,12 +154,10 @@ const ArtistProfile: React.FC = () => {
   };
   
   const handleViewContent = (content: Content) => {
-    // Navigate to content view or open detail dialog
     navigate(`/search?highlight=${content.id}`);
   };
   
   const handleViewProfile = (profileId: string) => {
-    // Close dialog and navigate to profile
     setIsViewingFollowers(false);
     setIsViewingFollowing(false);
     
@@ -214,7 +216,6 @@ const ArtistProfile: React.FC = () => {
   
   return (
     <div className="flex flex-col">
-      {/* Profile Header */}
       <div className="bg-primary/10 p-6 flex flex-col items-center">
         <Avatar className="h-24 w-24 mb-4">
           {profile.avatar_url ? (
@@ -239,7 +240,6 @@ const ArtistProfile: React.FC = () => {
         )}
       </div>
       
-      {/* Stats */}
       <div className="p-4 space-y-4">
         <div className="flex justify-between">
           <div className="text-center">
@@ -272,7 +272,6 @@ const ArtistProfile: React.FC = () => {
           </div>
         )}
         
-        {/* Content Tabs */}
         <Tabs defaultValue="artwork">
           <TabsList className="grid grid-cols-2 mb-4">
             <TabsTrigger value="artwork">Artwork</TabsTrigger>
@@ -290,11 +289,13 @@ const ArtistProfile: React.FC = () => {
                       className="relative aspect-square rounded-md overflow-hidden cursor-pointer"
                       onClick={() => handleViewContent(artwork)}
                     >
-                      <img 
-                        src={(artwork as any).image_url} 
-                        alt={artwork.title}
-                        className="w-full h-full object-cover"
-                      />
+                      {artwork.image_url && (
+                        <img 
+                          src={artwork.image_url} 
+                          alt={artwork.title}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
                       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
                         <div className="text-white text-sm font-medium truncate">{artwork.title}</div>
                         <div className="flex items-center">
@@ -348,7 +349,6 @@ const ArtistProfile: React.FC = () => {
         </Tabs>
       </div>
       
-      {/* Followers Dialog */}
       <Dialog open={isViewingFollowers} onOpenChange={setIsViewingFollowers}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -398,7 +398,6 @@ const ArtistProfile: React.FC = () => {
         </DialogContent>
       </Dialog>
       
-      {/* Following Dialog */}
       <Dialog open={isViewingFollowing} onOpenChange={setIsViewingFollowing}>
         <DialogContent className="max-w-md">
           <DialogHeader>

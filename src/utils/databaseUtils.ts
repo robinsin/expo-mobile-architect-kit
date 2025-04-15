@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy, Notification, NotificationType, UserStats, FollowConnection } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
@@ -8,13 +9,13 @@ export const fetchProfiles = async (userIds: string[]): Promise<Record<string, P
     
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, name, avatar_url, artist_type, bio, website')
+      .select('*')
       .in('id', userIds);
       
     if (error) throw error;
     
     const profilesMap = (data || []).reduce((acc, profile) => {
-      acc[profile.id] = profile;
+      acc[profile.id] = profile as Profile;
       return acc;
     }, {} as Record<string, Profile>);
     
