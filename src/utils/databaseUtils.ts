@@ -1,6 +1,5 @@
-
 import { supabase } from "@/integrations/supabase/client";
-import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy, Notification, NotificationType, UserStats, FollowConnection } from "@/types/social";
+import { Like, Comment, Follow, Profile, Content, UserSettings, PrivacyMode, InspiredBy, Notification, NotificationType, UserStats, FollowConnection, ContentType } from "@/types/social";
 import { toast } from "@/hooks/use-toast";
 
 export const fetchProfiles = async (userIds: string[]): Promise<Record<string, Profile>> => {
@@ -102,7 +101,6 @@ export const likeContent = async (
   isLiked: boolean
 ): Promise<boolean> => {
   try {
-    // First, check if user has likes credit
     const { data: userProfile } = await supabase
       .from('profiles')
       .select('*')
@@ -118,11 +116,9 @@ export const likeContent = async (
       return isLiked;
     }
     
-    // Default to 5 if likes_credit is null
     const likesCredit = userProfile.likes_credit ?? 5;
     
     if (isLiked) {
-      // If already liked, remove the like
       const { error } = await supabase
         .from('likes')
         .delete()
@@ -131,7 +127,6 @@ export const likeContent = async (
         
       if (error) throw error;
       
-      // Increase user's likes credit by 1
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
@@ -141,7 +136,6 @@ export const likeContent = async (
         
       if (updateError) throw updateError;
       
-      // Decrease content owner's likes points by 1
       await supabase.rpc('decrement_likes_points', { user_id: content.user_id });
       
       toast({
@@ -152,7 +146,6 @@ export const likeContent = async (
       
       return false;
     } else {
-      // Check if user has enough credits
       if (likesCredit <= 0) {
         toast({
           title: "Not enough like credits",
@@ -162,7 +155,6 @@ export const likeContent = async (
         return isLiked;
       }
       
-      // Add a new like
       const { error } = await supabase
         .from('likes')
         .insert({
@@ -173,7 +165,6 @@ export const likeContent = async (
         
       if (error) throw error;
       
-      // Decrease user's likes credit
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ 
@@ -183,10 +174,8 @@ export const likeContent = async (
         
       if (updateError) throw updateError;
       
-      // Increase content owner's likes points by 1
       await supabase.rpc('increment_likes_points', { user_id: content.user_id });
       
-      // Create notification for the content owner if not the same user
       if (userId !== content.user_id) {
         createNotification(content.user_id, userId, 'like', content.id, content.type);
       }
@@ -248,7 +237,6 @@ export const followUser = async (
         
       if (error) throw error;
       
-      // Create notification
       createNotification(targetUserId, currentUserId, 'follow');
       
       toast({
@@ -294,8 +282,6 @@ export const addComment = async (
         user_profile: userProfile
       };
       
-      // Create notification for content owner
-      // First get the content to find its owner
       const { data: contentData } = await supabase
         .from(contentType === 'artwork' ? 'artworks' : 'music_tracks')
         .select('user_id')
@@ -325,7 +311,7 @@ export const addComment = async (
   }
 };
 
-export const saveInspirationSource = async (contentId: string, contentTitle: string, contentType: string): Promise<boolean> => {
+export const saveInspirationSource = async (contentId: string, contentTitle: string, contentType: ContentType): Promise<boolean> => {
   try {
     const inspirationData: InspiredBy = {
       id: contentId,
@@ -426,7 +412,6 @@ export const updateUserSetting = async <T extends keyof UserSettings>(
 
 export const fetchContentStats = async (contentId: string): Promise<{ likes: number, comments: number }> => {
   try {
-    // Fetch likes count
     const { count: likesCount, error: likesError } = await supabase
       .from('likes')
       .select('*', { count: 'exact', head: true })
@@ -434,7 +419,6 @@ export const fetchContentStats = async (contentId: string): Promise<{ likes: num
       
     if (likesError) throw likesError;
     
-    // Fetch comments count
     const { count: commentsCount, error: commentsError } = await supabase
       .from('comments')
       .select('*', { count: 'exact', head: true })
@@ -471,7 +455,6 @@ export const fetchUserProfile = async (userId: string): Promise<Profile | null> 
 
 export const fetchUserStats = async (userId: string): Promise<UserStats> => {
   try {
-    // Fetch total likes received on user's content
     const { data: artworks } = await supabase
       .from('artworks')
       .select('id')
@@ -500,7 +483,6 @@ export const fetchUserStats = async (userId: string): Promise<UserStats> => {
       }
     }
     
-    // Fetch followers count
     const { data: followersData, error: followersError } = await supabase
       .from('follows')
       .select('*', { count: 'exact' })
@@ -508,7 +490,6 @@ export const fetchUserStats = async (userId: string): Promise<UserStats> => {
       
     const followersCount = followersData?.length || 0;
     
-    // Fetch following count
     const { data: followingData, error: followingError } = await supabase
       .from('follows')
       .select('*', { count: 'exact' })
@@ -529,7 +510,6 @@ export const fetchUserStats = async (userId: string): Promise<UserStats> => {
 
 export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
   try {
-    // Get most liked content IDs with counts
     const { data: likesData, error: likesError } = await supabase
       .from('likes')
       .select('content_id, content_type')
@@ -541,7 +521,6 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
       return [];
     }
     
-    // Count likes per content and sort
     const likesCount: Record<string, number> = {};
     likesData.forEach(like => {
       if (likesCount[like.content_id]) {
@@ -551,7 +530,6 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
       }
     });
     
-    // Convert to array and sort by count
     const sortedLikes = Object.entries(likesCount)
       .map(([contentId, count]) => ({
         contentId,
@@ -559,9 +537,8 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
         contentType: likesData.find(l => l.content_id === contentId)?.content_type || 'artwork'
       }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, limit * 2); // Fetch more than needed in case some content is no longer available
+      .slice(0, limit * 2);
     
-    // Separate artwork and music IDs
     const artworkIds = sortedLikes
       .filter(item => item.contentType === 'artwork')
       .map(item => item.contentId);
@@ -573,7 +550,6 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
     let artworks: any[] = [];
     let musicTracks: any[] = [];
     
-    // Fetch artworks
     if (artworkIds.length > 0) {
       const { data: artworksData } = await supabase
         .from('artworks')
@@ -585,7 +561,6 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
       }
     }
     
-    // Fetch music
     if (musicIds.length > 0) {
       const { data: musicData } = await supabase
         .from('music_tracks')
@@ -597,10 +572,8 @@ export const fetchMostLikedContent = async (limit = 5): Promise<Content[]> => {
       }
     }
     
-    // Combine and sort by likes count
     const content = [...artworks, ...musicTracks];
     
-    // Sort content by the like counts from earlier
     const sortedContent = content
       .map(item => ({
         content: item,
@@ -631,7 +604,6 @@ export const fetchFollowers = async (userId: string): Promise<FollowConnection[]
       return [];
     }
     
-    // Get all follower profiles
     const followerIds = data.map(follow => follow.follower_id);
     const profiles = await fetchProfiles(followerIds);
     
@@ -660,7 +632,6 @@ export const fetchFollowing = async (userId: string): Promise<FollowConnection[]
       return [];
     }
     
-    // Get all followed profiles
     const followedIds = data.map(follow => follow.followed_id);
     const profiles = await fetchProfiles(followedIds);
     
@@ -714,7 +685,6 @@ export const fetchNotifications = async (userId: string): Promise<Notification[]
       
     if (error) throw error;
     
-    // Convert string type to NotificationType
     const typedNotifications: Notification[] = (data || []).map(notification => ({
       ...notification,
       type: notification.type as NotificationType
